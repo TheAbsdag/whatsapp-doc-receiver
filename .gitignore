@@ -1,0 +1,12 @@
+# Dependencias y caché npm local
+node_modules/
+.npm-cache/
+
+# Sesión de WhatsApp (auth) y registros generados en ejecución
+data/
+
+# Varios
+*.log
+*.tmp
+test/.tmp/
+instalacion.log

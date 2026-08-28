@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar WhatsApp Doc Receiver
+Comment=Instala dependencias, el servicio systemd y el kiosko (un clic)
+Exec=sh -c 'd="$(dirname "$1")"; chmod +x "$d/instalar.sh" 2>/dev/null; exec bash "$d/instalar.sh"' -- %k
+Terminal=false

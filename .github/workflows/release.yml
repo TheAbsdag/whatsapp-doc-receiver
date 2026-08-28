@@ -1,0 +1,56 @@
+name: Release multiplataforma
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  empaquetar:
+    name: Empaquetar (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Pruebas (simulación sin WhatsApp)
+        run: npm test
+
+      - name: Empaquetar (npm pack; .gitignore excluye node_modules/data)
+        shell: bash
+        run: |
+          mkdir -p dist
+          VERSION=$(node -p "require('./package.json').version")
+          npm pack --pack-destination dist >/dev/null
+          mv dist/*.tgz "dist/whatsapp-doc-receiver-${VERSION}-${{ matrix.os }}.tgz"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.os }}
+          path: dist/*.tgz
+
+  publicar:
+    name: Publicar release
+    needs: empaquetar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Crear/actualizar release (GH CLI)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.tgz --title "whatsapp-doc-receiver $GITHUB_REF_NAME" --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" dist/*.tgz --clobber

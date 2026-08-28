@@ -1,0 +1,14 @@
+[Unit]
+Description=Receptor de documentos de WhatsApp (Baileys headless, web en 127.0.0.1:8787)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/whatsapp-doc-receiver
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

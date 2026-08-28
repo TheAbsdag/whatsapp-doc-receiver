@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Receptor de documentos de WhatsApp</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="cabecera">
+      <h1>Receptor de documentos de WhatsApp</h1>
+      <span id="estado" class="estado bad">Desconectado</span>
+    </div>
+    <div class="cabe-info">
+      <span id="ultimo-mensaje"></span>
+      <button id="btn-qr" type="button">Escanear QR</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="qr-panel" hidden>
+      <p>Escanea este código con tu teléfono: <strong>WhatsApp → Ajustes → Dispositivos vinculados → Vincular dispositivo</strong>.</p>
+      <img id="qr-img" alt="Código QR de WhatsApp">
+      <p id="qr-msg" class="aviso"></p>
+    </section>
+
+    <section class="barra">
+      <label for="impresora">Impresora:</label>
+      <select id="impresora">
+        <option value="">(Por defecto — impresora del sistema)</option>
+      </select>
+      <span id="impresoras-aviso" class="aviso"></span>
+      <button id="btn-impresora" type="button">Guardar</button>
+      <button id="btn-orden" type="button">Antiguos primero</button>
+      <button id="btn-actualizar" type="button">Actualizar</button>
+    </section>
+
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha y hora</th>
+            <th>Origen</th>
+            <th>Remitente</th>
+            <th>Nombre de archivo</th>
+            <th>Tamaño</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="filas"></tbody>
+      </table>
+    </div>
+
+    <p id="mensaje" class="mensaje"></p>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
