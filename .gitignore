@@ -10,3 +10,5 @@ data/
 *.tmp
 test/.tmp/
 instalacion.log
+instalacion-windows.log
+dist/

@@ -19,6 +19,7 @@ Receptor **headless** de documentos de WhatsApp para una máquina **Fedora Linux
 | Node.js | **20.0 o superior** (`sudo dnf install nodejs npm`) |
 | CUPS | `sudo dnf install cups-client`; impresora configurada: `lpstat -p` |
 | Teléfono | Un WhatsApp con un número dedicado (recomendado) |
+| Windows (opcional, multiplataforma) | Windows 10/11 con Node 20+; para imprimir: [SumatraPDF](https://www.sumatrapdfreader.org/) portable en el PATH (o `"pdfBin"` en `config.json`) |
 
 RAM: proceso Node + Baileys ≈ ~80–150 MB (frente a cientos de MB–GB de un cliente Electron).
 
@@ -93,6 +94,50 @@ systemctl --user status whatsapp-doc-receiver
 - Reiniciar: `systemctl --user restart whatsapp-doc-receiver`
 - (Opcional, arranque sin login) `loginctl enable-linger $USER`
 
+## Windows (multiplataforma)
+
+El mismo proyecto corre en Windows 10/11: el núcleo (Baileys + HTTP + web) es 100 % multiplataforma y está probado; lo único distinto son la impresión y el "servicio".
+
+**Instalación de un clic** (equivalente de `Instalar.desktop`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\instalar.ps1        # solo receptor
+powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -Kiosk # receptor + Edge a pantalla completa
+```
+
+`instalar.ps1` verifica Node 20+, hace `npm install`, crea y arranca la tarea programada **`whatsapp-doc-receiver`** (OnLogon, reinicio ante fallos cada 1 min — equivalente a `Restart=on-failure`), con `-Kiosk` agrega **`whatsapp-doc-kiosk`** (msedge `--kiosk` 30 s después del login) y abre la web para el QR. Detalle en `instalacion-windows.log`. Para desinstalar: `Unregister-ScheduledTask whatsapp-doc-receiver` (y `whatsapp-doc-kiosk`).
+
+**Diferencias con Linux:**
+
+| | Linux (Fedora) | Windows |
+|---|---|---|
+| Impresora | CUPS (`lp`, `lpstat -a`) | **SumatraPDF** (`-print-to`) — portable, sin instalación; detección vía `Get-Printer` (con fallback por registro si WMI está restringido) |
+| Servicio | systemd de usuario | Tareas programadas (OnLogon + restart on failure) |
+| Kiosko | GNOME autostart + Chromium/Firefox/Epiphany | Edge `--kiosk` (viene con Windows) |
+| Carpeta de descargas | `~/WhatsAppDocs` | `%USERPROFILE%\WhatsAppDocs` (mismo `config.json`) |
+
+Si SumatraPDF no está, la app sigue funcionando (descarga y web OK) y la impresión devuelve un error explicativo en la UI con la solución.
+
+## Publicar releases con GitHub Actions (Linux + Windows)
+
+El repo trae `.github/workflows/release.yml`: al empujar un tag `v*`, cada release genera **dos artefactos** (un `.tgz` por SO) que ejecutan antes `npm test` en runners reales de Ubuntu y Windows.
+
+```bash
+# una vez:  gh auth login
+# crear el repo y subir:
+git init -b main
+git add -A && git commit -m "whatsapp-doc-receiver"
+gh repo create whatsapp-doc-receiver --public --source=. --push
+
+# cada publicación:
+git tag v1.0.0 && git push origin v1.0.0
+# → Actions crea la release "v1.0.0" con:
+#   whatsapp-doc-receiver-1.0.0-ubuntu-latest.tgz
+#   whatsapp-doc-receiver-1.0.0-windows-latest.tgz
+```
+
+Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data`. En Windows se abren con `tar.exe` (incluido en Windows 10+) o 7-Zip; en Linux, `tar xzf`. Los tres pasos del workflow (tests, empaquetado, release con `gh release`) fueron validados localmente salvo la ejecución en los runners de GitHub, que requiere el repo público/privado creado y el tag.
+
 ## Uso diario
 
 Servicio arriba → documento recibido → tabla → **Descargar** → **Imprimir**. También se muestran los documentos **enviados** desde el teléfono vinculado (columna "Origen": Enviado / Recibido), en orden cronológico con el botón para alternar **Nuevos primero / Antiguos primero**.
@@ -134,15 +179,18 @@ Errores en JSON `{ "error": "..." }`: `404` documento inexistente, `409` imprimi
 package.json
 config.json              # puerto, carpeta de descargas, impresora
 whatsapp-doc-receiver.service
-Instalar.desktop         # doble clic = instalación (kiosko)
+Instalar.desktop         # doble clic = instalación (kiosko Linux)
 whatsapp-doc-kiosk.desktop  # autostart del kiosko (plantilla)
-instalar.sh              # instalador de un clic
+instalar.sh              # instalador de un clic (Linux)
+instalar.ps1             # instalador de un clic (Windows, -Kiosk opcional)
 kiosk.sh                 # abre la web a pantalla completa en cada login
+.gitattributes           # LF forzado para scripts/servicios (Linux)
+.github/workflows/release.yml  # releases Linux + Windows (tag v*)
 src/
   index.js               # servidor HTTP plano + API + arranque
   baileys.js             # conexión, QR, reconexión, descarga de media
   store.js               # data/documents.json (JSON atómico)
-  printer.js             # lp vía spawn con argumentos (sin shell)
+  printer.js             # lp/lpstat (CUPS) y SumatraPDF/Get-Printer (Windows)
   files.js               # saneado de nombres, colisiones, escritura atómica
   web/                   # index.html, app.js, style.css
 test/
