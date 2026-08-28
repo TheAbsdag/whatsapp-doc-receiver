@@ -51,6 +51,8 @@ jobs:
       - name: Crear/actualizar release (GH CLI)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # sin checkout no hay .git: gh necesita saber el repo
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.tgz --title "whatsapp-doc-receiver $GITHUB_REF_NAME" --generate-notes \
             || gh release upload "$GITHUB_REF_NAME" dist/*.tgz --clobber
