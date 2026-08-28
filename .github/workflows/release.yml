@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
 
+# GITHUB_TOKEN necesita escritura para crear la release
+permissions:
+  contents: write
+
 jobs:
   empaquetar:
     name: Empaquetar (${{ matrix.os }})
