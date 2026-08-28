@@ -15,6 +15,7 @@
     <div class="cabe-info">
       <span id="ultimo-mensaje"></span>
       <button id="btn-qr" type="button">Escanear QR</button>
+      <button id="btn-notif" type="button" hidden>Activar notificaciones</button>
     </div>
   </header>
 
@@ -36,6 +37,8 @@
       <button id="btn-actualizar" type="button">Actualizar</button>
     </section>
 
+    <div id="toast" hidden></div>
+
     <div class="tabla-wrap">
       <table>
         <thead>
@@ -51,6 +54,29 @@
         </thead>
         <tbody id="filas"></tbody>
       </table>
+    </div>
+
+    <div class="paginador">
+      <button id="btn-prev" type="button">‹ Anterior</button>
+      <span id="pagina-info"></span>
+      <button id="btn-next" type="button">Siguiente ›</button>
+    </div>
+
+    <section id="contexto-panel" hidden>
+      <div class="panel-cab">
+        <span id="contexto-titulo"></span>
+        <button id="contexto-cerrar" type="button">✕</button>
+      </div>
+      <div id="contexto-msgs"></div>
+    </section>
+
+    <div id="preview-panel" hidden>
+      <div class="panel-cab">
+        <span id="preview-titulo"></span>
+        <button id="preview-imprimir" type="button">Imprimir</button>
+        <button id="preview-cerrar" type="button">✕</button>
+      </div>
+      <div id="preview-contenido"></div>
     </div>
 
     <p id="mensaje" class="mensaje"></p>

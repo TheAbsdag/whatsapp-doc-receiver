@@ -4,12 +4,14 @@
     - verifica Node 20+ y hace npm install
     - registra la tarea "whatsapp-doc-receiver" (arranca en cada inicio de sesión,
       con reinicio automático ante fallos ~ Restart=on-failure de systemd)
-    - opcional -Kiosk: "whatsapp-doc-kiosk" abre Edge a pantalla completa en cada login
+    - registra "whatsapp-doc-web": abre el NAVEGADOR PREDETERMINADO con la web
+      UNA sola vez al iniciar sesión (sin pantalla completa) y crea un acceso
+      directo en el escritorio para reabrirla a mano si se cierra
+      (desregistra el antiguo kiosko de pantalla completa, si existía)
     - espera la web y la abre para escanear el QR
-  Uso (una vez):  powershell -ExecutionPolicy Bypass -File .\instalar.ps1 [-Kiosk]
+  Uso (una vez):  powershell -ExecutionPolicy Bypass -File .\instalar.ps1
   Detalle: instalacion-windows.log en la carpeta del proyecto.
 #>
-param([switch]$Kiosk)
 $ErrorActionPreference = 'Stop'
 
 $DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -43,17 +45,27 @@ Register-ScheduledTask -TaskName 'whatsapp-doc-receiver' -Action $accion -Trigge
 Start-ScheduledTask -TaskName 'whatsapp-doc-receiver'
 Log 'Tarea "whatsapp-doc-receiver" registrada y arrancada (se inicia sola en cada inicio de sesión)'
 
-# ---------------------------------------------------------------- 4) kiosko
-if ($Kiosk) {
-  $edge = @(
-    'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-    'C:\Program Files\Microsoft\Edge\Application\msedge.exe'
-  ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $edge) { $edge = 'msedge.exe' }
-  $kAccion = New-ScheduledTaskAction -Execute $edge -Argument '--kiosk --no-first-run http://127.0.0.1:8787'
-  $kTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME -Delay (New-TimeSpan -Seconds 30)
-  Register-ScheduledTask -TaskName 'whatsapp-doc-kiosk' -Action $kAccion -Trigger $kTrigger -Force | Out-Null
-  Log 'Kiosko configurado: Edge a pantalla completa en el próximo inicio de sesión'
+# --------------------------- 4) web en el navegador predeterminado (1 vez al
+# Migración: elimina el antiguo kiosko de pantalla completa si existía.
+Unregister-ScheduledTask -TaskName 'whatsapp-doc-kiosk' -Confirm:$false -ErrorAction SilentlyContinue
+
+# Abre el navegador predeterminado (cmd /c start) 30 s después del login,
+# cuando el servicio ya debería estar escuchando.
+$webAccion = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c start "" http://127.0.0.1:8787'
+$webTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME -Delay (New-TimeSpan -Seconds 30)
+Register-ScheduledTask -TaskName 'whatsapp-doc-web' -Action $webAccion -Trigger $webTrigger -Force | Out-Null
+Log 'Tarea "whatsapp-doc-web" registrada: el navegador predeterminado se abrirá UNA vez en cada inicio de sesión (sin pantalla completa)'
+
+# Acceso directo en el escritorio: reabrir a mano si se cierra.
+try {
+  $ws = New-Object -ComObject WScript.Shell
+  $acceso = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Receptor de documentos.lnk'))
+  $acceso.TargetPath = 'http://127.0.0.1:8787'
+  $acceso.Description = 'Abre el receptor de documentos de WhatsApp'
+  $acceso.Save()
+  Log 'Acceso directo "Receptor de documentos" creado en el escritorio (para reabrir la web si se cierra)'
+} catch {
+  Log "No se pudo crear el acceso directo del escritorio: $($_.Exception.Message)"
 }
 
 # ---------------------------------------------------------------- 5) la web

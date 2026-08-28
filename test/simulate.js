@@ -242,6 +242,80 @@ console.log('\n[10] Persistencia atómica del store')
   ok(s.data.lastMessageAt === null, 'lastMessageAt inicia en null (sin mensajes reales)')
 }
 
+console.log('\n[11] Paginación (25 por página; total y orden)')
+{
+  let r = await api('/api/documents?limit=2&offset=0')
+  ok(r.status === 200 && r.data.documents.length === 2 && r.data.total === 5 && r.data.offset === 0 && r.data.limit === 2,
+    `limit=2&offset=0 → 2 docs, total ${r.data.total}, offset ${r.data.offset}`)
+  ok(r.data.documents[0].id === 'TESTDOC-5' && r.data.documents[1].id === 'TESTDOC-4', 'primera página: los más recientes')
+  r = await api('/api/documents?limit=2&offset=4')
+  ok(r.status === 200 && r.data.documents.length === 1 && r.data.documents[0].id === 'TESTDOC-1', 'última página: 1 documento (TESTDOC-1)')
+  r = await api('/api/documents?limit=2&offset=0&order=asc')
+  ok(r.status === 200 && r.data.documents[0].id === 'TESTDOC-1', 'order=asc → primero el más antiguo')
+  r = await api('/api/documents?limit=200&offset=0')
+  ok(r.data.documents.length === 5 && r.data.limit === 200, 'limit alto devuelve todo')
+}
+
+console.log('\n[12] Contexto del chat (chatlog acotado, cronológico antiguo → reciente)')
+{
+  const jid = '5491155555555@s.whatsapp.net'
+  // 25 mensajes: CT-00 (el más antiguo) … CT-24 (el más reciente)
+  for (let i = 0; i < 25; i++) {
+    store.chatAdd({
+      id: `CT-${String(i).padStart(2, '0')}`,
+      remoteJid: jid,
+      fromMe: i % 2 === 0,
+      ts: new Date(Date.UTC(2024, 5, 1, 10, i)).toISOString(),
+      kind: i % 3 === 0 ? 'documento' : 'texto',
+      text: `mensaje ${i}`,
+      filename: i % 3 === 0 ? `doc-${i}.pdf` : '',
+      mime: i % 3 === 0 ? 'application/pdf' : '',
+    })
+  }
+  store.chatAdd({ id: 'TESTDOC-1', remoteJid: jid, ts: new Date().toISOString(), kind: 'documento', text: 'doc de prueba', filename: 'Informe.pdf', mime: 'application/pdf' })
+
+  let r = await api(`/api/chat/${jid}/messages?limit=20`)
+  ok(r.status === 200 && r.data.messages.length === 20, `GET /api/chat → ${r.data.messages.length} mensajes (límite 20)`)
+  // Con 25 mensajes + el documento, el recorte conserva los 20 más recientes:
+  // el más antiguo sobreviviente es CT-06 (CT-05 fue descartado al superar 20).
+  ok(r.data.messages[0].id === 'CT-06' && r.data.messages[19].id === 'TESTDOC-1',
+    `orden cronológico antiguo → reciente: ${r.data.messages[0].id} … ${r.data.messages[19].id} (recorte a 20)`)
+  ok(r.data.messages[0].kind === 'documento' && r.data.messages[1].kind === 'texto', 'kinds preservados (documento/texto)')
+  r = await api(`/api/chat/${jid}/messages`)
+  ok(r.status === 200 && r.data.messages.length === 20, 'límite por defecto 20 sin parámetro')
+  r = await api('/api/chat/NOEXISTE-999/messages')
+  ok(r.status === 200 && r.data.messages.length === 0, 'chat sin mensajes → lista vacía (200)')
+}
+
+console.log('\n[13] Vista previa: servir el archivo descargado')
+{
+  let r = await fetch(base + '/api/documents/TESTDOC-1/file')
+  ok(r.status === 200, `GET /file (descargado) → ${r.status}`)
+  ok((r.headers.get('content-type') || '').includes('application/pdf'), 'content-type application/pdf')
+  const cuerpo = await r.text()
+  ok(cuerpo.startsWith('%PDF'), 'cuerpo es el PDF descargado')
+  r = await fetch(base + '/api/documents/TESTDOC-4/file')
+  ok(r.status === 409, 'archivo sin descargar → 409')
+  r = await fetch(base + '/api/documents/NOEXISTE/file')
+  ok(r.status === 404, 'id inexistente → 404')
+  // ruta fuera de la carpeta de descargas → 403
+  store.update('TESTDOC-5', { status: 'downloaded', path: 'C:\\Windows\\System32\\notepad.exe' })
+  r = await fetch(base + '/api/documents/TESTDOC-5/file')
+  store.update('TESTDOC-5', { status: 'pending', path: null })
+  ok(r.status === 403, 'archivo fuera de downloadsDir → 403')
+}
+
+console.log('\n[14] Historial tras "reinicio" (el store debe recargar desde disco)')
+{
+  const antes = store.list().map((d) => d.id)
+  store.load() // simula el arranque nuevo (index.js main llama a store.load())
+  const despues = store.list().map((d) => d.id)
+  ok(JSON.stringify(antes) === JSON.stringify(despues) && despues.length === 5,
+    `reinicio simulado: se recuperan ${despues.length} documentos (${despues.join(', ')})`)
+  store.chatLoad()
+  ok(store.chatMessages('5491155555555@s.whatsapp.net', 3).length === 3, 'chatlog recuperado tras reinicio')
+}
+
 server.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 console.log(`\n${fallos === 0 ? 'SIMULACIÓN OK — todas las comprobaciones pasaron' : `SIMULACIÓN CON ${fallos} FALLOS`}`)

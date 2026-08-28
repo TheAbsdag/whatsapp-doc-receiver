@@ -110,6 +110,113 @@ td button + button { margin-left: 6px; }
 .mensaje.error { color: #991b1b; }
 
 /* ==========================================================================
+   Aviso no intrusivo (toast) — esquina inferior derecha
+   ========================================================================== */
+#toast {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 60;
+  max-width: 340px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #fff;
+  font-size: .9rem;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+
+/* ==========================================================================
+   Paginador (25 elementos por página)
+   ========================================================================== */
+.paginador {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: 10px 0;
+}
+.paginador span { flex: 1; text-align: center; font-size: .85rem; color: #4b5563; }
+
+/* ==========================================================================
+   Contexto del chat (últimos mensajes)
+   ========================================================================== */
+#contexto-panel {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 8px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+.panel-cab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: .9rem;
+  font-weight: 600;
+}
+.panel-cab span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#contexto-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+.chat-msg {
+  max-width: 82%;
+  align-self: flex-start;
+  background: #eef2f7;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: .85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-msg.mio { align-self: flex-end; background: #dbeafe; }
+.chat-msg.destacado { outline: 2px solid #2563eb; background: #eff6ff; }
+
+/* ==========================================================================
+   Vista previa (modal)
+   ========================================================================== */
+#preview-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(15, 23, 42, .6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#preview-panel[hidden] { display: none; } /* imprescindible: display:flex pisa el [hidden] nativo */
+#preview-panel .panel-cab {
+  width: min(860px, 100%);
+  border-radius: 10px 10px 0 0;
+}
+#preview-contenido {
+  width: min(860px, 100%);
+  height: min(78vh, 900px);
+  background: #fff;
+  border-radius: 0 0 10px 10px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  font-size: .9rem;
+}
+#preview-contenido iframe { width: 100%; height: 100%; border: 0; }
+#preview-contenido img { max-width: 100%; max-height: 74vh; }
+
+
+/* ==========================================================================
    Pantalla táctil (kiosko sin teclado): objetivos ≥48 px, texto mayor,
    más separación entre botones. Solo se activa en dispositivos táctiles.
    ========================================================================== */

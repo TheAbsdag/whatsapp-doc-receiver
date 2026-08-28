@@ -6,7 +6,8 @@
 #   1. Verifica/instala Node.js 20+ y cups-client (si hay sudo sin contraseña).
 #   2. npm install (baileys + pino + qrcode).
 #   3. Genera e instala el servicio systemd de USUARIO y lo arranca.
-#   4. Configura el kiosko (navegador a pantalla completa) para el próximo login.
+#   4. Configura la apertura AUTOMÁTICA en el navegador predeterminado (una vez,
+#      sin pantalla completa) para el próximo login + acceso directo para reabrir.
 #   5. Espera la web y la abre para escanear el QR de WhatsApp.
 #
 # Sin teclado: los mensajes van por ventanas zenity (mouse) y todo el detalle
@@ -106,13 +107,29 @@ fi
 log "Servicio activo (arrancará solo en cada inicio de sesión)"
 
 # ---------------------------------------------------------------------------
-# 5) Kiosko: navegador a pantalla completa en el próximo inicio de sesión
+# 5) Web: abrir UNA vez en el navegador predeterminado en el próximo login
+#    (sin pantalla completa) + acceso directo en el escritorio para reabrir.
 # ---------------------------------------------------------------------------
 chmod +x "$DIR/kiosk.sh" "$DIR/Instalar.desktop" 2>/dev/null || true
 mkdir -p "$HOME/.config/autostart"
 sed "s|^Exec=.*|Exec=$DIR/kiosk.sh|" "$DIR/whatsapp-doc-kiosk.desktop" \
   > "$HOME/.config/autostart/whatsapp-doc-kiosk.desktop"
-log "Kiosko configurado en ~/.config/autostart (se abre solo en el próximo login)"
+log "Autostart configurado: la web se abrirá UNA vez en el navegador predeterminado en el próximo login (sin pantalla completa)"
+
+# Acceso directo manual (reabrir si se cierra)
+DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+if [ -d "$DESKTOP_DIR" ]; then
+  cat > "$DESKTOP_DIR/Receptor de documentos.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Receptor de documentos
+Comment=Reabre el receptor de documentos de WhatsApp
+Exec=sh -c 'xdg-open "$URL"'
+Terminal=false
+EOF
+  chmod +x "$DESKTOP_DIR/Receptor de documentos.desktop" 2>/dev/null || true
+  log "Acceso directo 'Receptor de documentos' creado en el escritorio"
+fi
 
 # ---------------------------------------------------------------------------
 # 6) Esperar la web y abrirla para escanear el QR
@@ -124,5 +141,5 @@ for _ in $(seq 1 30); do
 done
 xdg-open "$URL" >/dev/null 2>&1 || true
 
-aviso info "Instalación lista ✅\n\n$URL se abrió en el navegador:\nescaneá el QR con WhatsApp (Dispositivos vinculados).\n\nEn el PRÓXIMO inicio de sesión la web se abrirá sola a pantalla completa (kiosko)."
+aviso info "Instalación lista ✅\n\n$URL se abrió en el navegador:\nescaneá el QR con WhatsApp (Dispositivos vinculados).\n\nEn el PRÓXIMO inicio de sesión la web se abrirá sola UNA vez en el navegador predeterminado (sin pantalla completa); si se cierra, reabrilá con el acceso directo del escritorio."
 log "=== Listo ==="

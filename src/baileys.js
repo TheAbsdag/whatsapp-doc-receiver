@@ -73,6 +73,21 @@ function extraerDocumento(msg) {
   }
 }
 
+/** Info mínima de cualquier mensaje (texto, documento o imagen) para el contexto del chat. */
+function extraerChat(msg) {
+  const m = msg.message || {}
+  const doc = m.documentMessage
+  const img = m.imageMessage
+  const media = doc || img
+  const text = String(m.conversation || m.extendedTextMessage?.text || m.caption || '')
+  return {
+    kind: media ? (img ? 'imagen' : 'documento') : text ? 'texto' : 'otro',
+    text,
+    filename: doc ? String(doc.fileName || '') : '',
+    mime: media ? String(media.mimetype || '') : '',
+  }
+}
+
 async function conectar(handlers) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
@@ -133,6 +148,17 @@ async function conectar(handlers) {
     if (type !== 'notify') return
     if (handlers.onMessage) handlers.onMessage()
     for (const msg of messages) {
+      // Contexto del chat: todo mensaje nuevo (texto o media) alimenta el
+      // log acotado por chat; también los enviados desde el teléfono vinculado.
+      if (handlers.onChatMessage) {
+        const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()
+        handlers.onChatMessage(msg, {
+          remoteJid: msg.key.remoteJid || '',
+          fromMe: !!msg.key.fromMe,
+          ts: new Date(ts).toISOString(),
+          ...extraerChat(msg),
+        })
+      }
       // Se procesan TODOS los documentos: recibidos y también los que se
       // envían desde el teléfono vinculado (msg.key.fromMe === true).
       const info = extraerDocumento(msg)
@@ -162,6 +188,7 @@ function reconectar(handlers) {
  * Arranca el proceso de conexión (una sola vez). handlers:
  *   onMessage()  → se dispara con cada mensaje nuevo (para lastMessageAt)
  *   onDocument(msg, info) → se dispara con cada documento/imagen recibida
+ *   onChatMessage(msg, info) → se dispara con cada mensaje nuevo (contexto del chat)
  */
 export function start(handlers = {}) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })

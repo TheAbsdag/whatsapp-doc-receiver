@@ -7,9 +7,10 @@ Receptor **headless** de documentos de WhatsApp para una máquina **Fedora Linux
 ## Qué hace
 
 1. Se conecta a WhatsApp por QR (la primera vez, o si se desvincula) y queda enlazado en segundo plano.
-2. Cuando llega un **documento o imagen**, lo registra en `data/documents.json` (escritura atómica).
-3. La web (`http://127.0.0.1:8787`) muestra la tabla: **Fecha y hora · Origen · Remitente · Nombre de archivo · Tamaño · Estado · Acciones**.
-4. **Descargar** guarda el archivo en `~/WhatsAppDocs/` (nombre saneado, sin colisiones) y **Imprimir** lo manda a CUPS (`lp`), habilitado solo si ya está descargado. Refresco automático cada 5 segundos.
+2. Cuando llega un **documento o imagen**, lo registra en `data/documents.json` (escritura atómica) y avisa con una **notificación no intrusiva** (aviso del navegador + toast, **sin enviar ningún mensaje**).
+3. La web (`http://127.0.0.1:8787`) muestra la tabla paginada (**25 elementos por página**): **Fecha y hora · Origen · Remitente · Nombre de archivo · Tamaño · Estado · Acciones**.
+4. **Vista previa** abre el PDF/imagen en la misma página (modal) antes de imprimir; **Descargar** guarda el archivo en `~/WhatsAppDocs/` (nombre saneado, sin colisiones) y **Imprimir** descarga (si hace falta) y manda a la impresora **de a un documento por vez** — los clics nunca se pierden ni se "saltan" documentos.
+5. Al tocar una fila se muestra el **contexto del chat** (últimos 20 mensajes) en solo lectura. Refresco automático cada 5 segundos.
 
 ## Requisitos
 
@@ -23,9 +24,9 @@ Receptor **headless** de documentos de WhatsApp para una máquina **Fedora Linux
 
 RAM: proceso Node + Baileys ≈ ~80–150 MB (frente a cientos de MB–GB de un cliente Electron).
 
-## Instalación de un clic (modo kiosko — recomendado)
+## Instalación de un clic (web automática — recomendado)
 
-Pensado para una máquina **sin teclado** (kiosko): todo se maneja con mouse y un único clic.
+Pensado para una máquina **sin teclado**: tras el login la web se abre sola **una vez en el navegador predeterminado** (sin pantalla completa); si se cierra, se reabre con el acceso directo del escritorio.
 
 **Preparación (una sola vez, la hace quien copia los archivos, con teclado):**
 
@@ -42,16 +43,14 @@ cd ~/whatsapp-doc-receiver && chmod +x instalar.sh kiosk.sh Instalar.desktop
 1. Verifica (e instala si hay sudo sin contraseña) `node >= 20` y `cups-client`; si falta algo, muestra el error en una ventana (zenity) — nada de terminal.
 2. `npm install` (baileys + pino + qrcode).
 3. Genera la unidad del servicio **con la ruta real de node y del proyecto** (`sed` sobre `whatsapp-doc-receiver.service`) y la deja en `~/.config/systemd/user/`, con `systemctl --user enable --now`.
-4. Configura el **kiosko** en `~/.config/autostart/`: en el próximo inicio de sesión la web se abre sola a pantalla completa.
+4. Configura la **apertura automática**: en el próximo inicio de sesión la web se abre sola UNA vez en el navegador predeterminado (`xdg-open`, sin pantalla completa), y crea un acceso directo **"Receptor de documentos"** en el escritorio para reabrirla a mano.
 5. Espera a que la web responda y la abre para **escanear el QR** con WhatsApp.
 
 El detalle de todo queda en `instalacion.log` (dentro de la carpeta del proyecto). Re-ejecutable: si ya está instalado, solo lo deja arriba y reabre la web.
 
 **Pantalla táctil:** la web está optimizada con `@media (pointer: coarse)` — botones de al menos 48 px, texto y filas mayores en dispositivos táctiles, y el refresco automático se pausa mientras se toca una acción (el toque nunca se pierde).
 
-**Kiosko puro (opcional):** activa autologin en `Ajustes → Usuarios → Login automático` (o `loginctl enable-linger $USER`) y reinicia la máquina: el servicio arranca solo y la web queda a pantalla completa sin tocar nada.
-
-**RAM del kiosko:** el navegador manda. Chrome/Chromium ~300–500 MB; Firefox ~300–400 MB; si quieres menos, `sudo dnf install epiphany` (usa `--application-mode`, ventana limpia, ~150 MB).
+**Reabrir a mano:** doble clic en el acceso directo **"Receptor de documentos"** del escritorio (Linux) o **Receptor de documentos.lnk** (Windows). Funciona aunque la sesión guardada siga activa; si la sesión fue desvinculada, la web muestra el QR para vincular de nuevo.
 
 ## Instalación manual (alternativa)
 
@@ -101,11 +100,10 @@ El mismo proyecto corre en Windows 10/11: el núcleo (Baileys + HTTP + web) es 1
 **Instalación de un clic** (equivalente de `Instalar.desktop`):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\instalar.ps1        # solo receptor
-powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -Kiosk # receptor + Edge a pantalla completa
+powershell -ExecutionPolicy Bypass -File .\instalar.ps1
 ```
 
-`instalar.ps1` verifica Node 20+, hace `npm install`, crea y arranca la tarea programada **`whatsapp-doc-receiver`** (OnLogon, reinicio ante fallos cada 1 min — equivalente a `Restart=on-failure`), con `-Kiosk` agrega **`whatsapp-doc-kiosk`** (msedge `--kiosk` 30 s después del login) y abre la web para el QR. Detalle en `instalacion-windows.log`. Para desinstalar: `Unregister-ScheduledTask whatsapp-doc-receiver` (y `whatsapp-doc-kiosk`).
+`instalar.ps1` verifica Node 20+, hace `npm install`, crea y arranca la tarea programada **`whatsapp-doc-receiver`** (OnLogon, reinicio ante fallos cada 1 min — equivalente a `Restart=on-failure`), registra **`whatsapp-doc-web`** (abre el **navegador predeterminado** con la web UNA vez al iniciar sesión, sin pantalla completa; **desregistra el antiguo kiosko** de Edge si existía) y crea el acceso directo **Receptor de documentos.lnk** en el escritorio. Al final abre la web para el QR. Detalle en `instalacion-windows.log`. Para desinstalar: `Unregister-ScheduledTask whatsapp-doc-receiver` (y `whatsapp-doc-web`).
 
 **Diferencias con Linux:**
 
@@ -113,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -Kiosk # receptor + Edge
 |---|---|---|
 | Impresora | CUPS (`lp`, `lpstat -a`) | **SumatraPDF** (`-print-to`) — portable, sin instalación; detección vía `Get-Printer` (con fallback por registro si WMI está restringido) |
 | Servicio | systemd de usuario | Tareas programadas (OnLogon + restart on failure) |
-| Kiosko | GNOME autostart + Chromium/Firefox/Epiphany | Edge `--kiosk` (viene con Windows) |
+| Web automática | Autostart + `xdg-open` (una vez, sin pantalla completa) | Tarea `whatsapp-doc-web` + acceso directo en el escritorio |
 | Carpeta de descargas | `~/WhatsAppDocs` | `%USERPROFILE%\WhatsAppDocs` (mismo `config.json`) |
 
 Si SumatraPDF no está, la app sigue funcionando (descarga y web OK) y la impresión devuelve un error explicativo en la UI con la solución.
@@ -140,8 +138,11 @@ Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data
 
 ## Uso diario
 
-Servicio arriba → documento recibido → tabla → **Descargar** → **Imprimir**. También se muestran los documentos **enviados** desde el teléfono vinculado (columna "Origen": Enviado / Recibido), en orden cronológico con el botón para alternar **Nuevos primero / Antiguos primero**.
+Servicio arriba → documento recibido → tabla (25 por página) → **Vista previa** (opcional) → **Imprimir**. **Imprimir** descarga automáticamente si hace falta y manda a la cola de impresión **de a un documento por vez**: si tocás Imprimir en varios seguidos, todos se imprimen en orden (nada se salta). También se muestran los documentos **enviados** desde el teléfono vinculado (columna "Origen": Enviado / Recibido), con el botón para alternar **Nuevos primero / Antiguos primero** (la paginación sigue el orden elegido).
 
+- **Notificaciones no intrusivas**: al llegar un documento (o al perderse/restablecerse la conexión) hay un toast en la esquina y, con el permiso activado (botón **"Activar notificaciones"**), un aviso del navegador. **El programa nunca envía mensajes de WhatsApp.**
+- **Contexto del chat**: al tocar una fila se muestran los últimos 20 mensajes de ese chat (se guardan desde esta versión en `data/chatlog.json`); el documento tocado queda resaltado.
+- **Historial**: todos los documentos registrados se guardan y **se recuperan tras reiniciar el equipo** (se cargan de `data/documents.json` al arrancar). Lo recibido antes de instalar el receptor no se puede recuperar (WhatsApp no entrega historial antiguo al protocolo; ver Solución de problemas).
 - **Impresora**: un **dropdown** con las impresoras detectadas por el sistema (`lpstat -a`); la primera opción, "(Por defecto — impresora del sistema)", equivale a `lp` sin `-d`; cualquier otra equivale a `lp -d <nombre>`. Si la detección falla (sin CUPS) se muestra el aviso y se puede guardar igualmente el nombre manualmente si se conoce.
 - Los archivos quedan en `~/WhatsAppDocs/` (configurable en `config.json`).
 - El estado muestra **Conectado / Reconectando / Desconectado (requiere QR)** y el QR se refresca automáticamente cuando hace falta.
@@ -152,9 +153,11 @@ Servicio arriba → documento recibido → tabla → **Descargar** → **Imprimi
 |---|---|
 | `GET /api/status` | `{ connected, loggedIn, requiresQr, lastMessageAt }` |
 | `GET /api/qr` | `{ qrBase64 }` (PNG) o `404` si no hay QR pendiente |
-| `GET /api/documents` | lista de registros en orden cronológico (con `status` y `direction`: `sent` / `received`) |
+| `GET /api/documents` | lista **paginada**: `{ documents, total, offset, limit }` — `?limit=25&offset=0` y `&order=asc` (antiguos primero) |
 | `POST /api/documents/:id/download` | descarga la media a `~/WhatsAppDocs/` → `{ ok, fileName, path }` |
+| `GET /api/documents/:id/file` | sirve el archivo descargado (vista previa; solo desde `downloadsDir`) |
 | `POST /api/documents/:id/print` | ejecuta `lp` → `{ ok, message }` |
+| `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=20`) |
 | `GET/POST /api/printer` | leer/guardar el nombre de impresora |
 | `GET /api/printers` | `{ printers: [...], error? }` — impresoras del sistema (`lpstat -a`) |
 
@@ -179,17 +182,17 @@ Errores en JSON `{ "error": "..." }`: `404` documento inexistente, `409` imprimi
 package.json
 config.json              # puerto, carpeta de descargas, impresora
 whatsapp-doc-receiver.service
-Instalar.desktop         # doble clic = instalación (kiosko Linux)
-whatsapp-doc-kiosk.desktop  # autostart del kiosko (plantilla)
+Instalar.desktop         # doble clic = instalación (web automática Linux)
+whatsapp-doc-kiosk.desktop  # autostart: abre la web una vez al login (plantilla)
 instalar.sh              # instalador de un clic (Linux)
-instalar.ps1             # instalador de un clic (Windows, -Kiosk opcional)
-kiosk.sh                 # abre la web a pantalla completa en cada login
+instalar.ps1             # instalador de un clic (Windows; web en navegador predeterminado)
+kiosk.sh                 # abre la web UNA vez en el navegador predeterminado
 .gitattributes           # LF forzado para scripts/servicios (Linux)
 .github/workflows/release.yml  # releases Linux + Windows (tag v*)
 src/
   index.js               # servidor HTTP plano + API + arranque
   baileys.js             # conexión, QR, reconexión, descarga de media
-  store.js               # data/documents.json (JSON atómico)
+  store.js               # data/documents.json + chatlog.json (JSON atómico)
   printer.js             # lp/lpstat (CUPS) y SumatraPDF/Get-Printer (Windows)
   files.js               # saneado de nombres, colisiones, escritura atómica
   web/                   # index.html, app.js, style.css
@@ -207,6 +210,7 @@ El entorno de desarrollo no tiene WhatsApp real, CUPS ni systemd, así que la si
 - la página carga y `GET /api/documents` devuelve los registros;
 - **descarga** de media simulada → archivo guardado con nombre final correcto y registro `downloaded`;
 - **impresión** con un `lp` simulado (verifica argumentos `-d impresora -- archivo`), y el fallo de CUPS se reporta en `message`;
+- **paginación** (`limit`/`offset`/`total`, `order=asc`), **contexto de chat** (`/api/chat/:jid/messages`, recorte a 20), **vista previa** (`/api/documents/:id/file`: 200/409/403, contenido correcto) y **recuperación del historial tras un reinicio simulado** (store recargado de disco);
 - errores: `404` id inexistente, `409` imprimir sin descargar; QR PNG base64; persistencia atómica sin `.tmp` residuales.
 
 ```bash
@@ -220,11 +224,14 @@ En la máquina Fedora, sustituye la impresora simulada por una real: `lpstat -p`
 | Problema | Solución |
 |---|---|
 | `Instalar.desktop` se abre como texto | Falta el bit ejecutable (pasa al copiar desde Windows/USB). Con mouse: botón derecho → Propiedades → Permisos → "Permitir ejecutar el archivo como programa", o una vez con teclado: `chmod +x Instalar.desktop instalar.sh kiosk.sh` |
-| El kiosko no aparece al iniciar | `systemctl --user enable --now whatsapp-doc-receiver` debe estar activo; revisa `~/.config/autostart/whatsapp-doc-kiosk.desktop` (debe apuntar a la ruta real de `kiosk.sh`) y que haya sesión gráfica (autologin activado) |
-| Desactivar el kiosko temporalmente | Desde SSH: `pkill -f kiosk.sh`; para quitarlo del autostart: `rm ~/.config/autostart/whatsapp-doc-kiosk.desktop` |
+| La web no se abre sola al iniciar | `systemctl --user enable --now whatsapp-doc-receiver` debe estar activo; revisa `~/.config/autostart/whatsapp-doc-kiosk.desktop` (debe apuntar a la ruta real de `kiosk.sh`) y que haya sesión gráfica (autologin activado) |
+| Reabrir la web manualmente | Doble clic en el acceso directo **"Receptor de documentos"** del escritorio |
+| Desactivar la apertura automática | `rm ~/.config/autostart/whatsapp-doc-kiosk.desktop` (la web se sigue pudiendo abrir con el acceso directo) |
 | "Reconectando" sin QR | Espera: reconexión automática con backoff (2s→30s). Si persiste: `journalctl --user -u whatsapp-doc-receiver -f` |
 | Sesión desvinculada / otro teléfono | La app lo detecta (`DisconnectReason.loggedOut`), limpia `data/auth/` y muestra un QR fresco en la web. Si no aparece: `systemctl --user restart whatsapp-doc-receiver` |
-| No llegan mensajes | La app **solo** ve mensajes nuevos tras el enlace (no lee el historial). Verifica que el ítem sea un documento/imagen (no un sticker/enlace) y que el registro esté en `data/documents.json` |
+| Documentos anteriores no aparecen tras reiniciar | Desde esta versión se recargan solos (se guardan en `data/documents.json` y el arranque los carga). Si no aparecen, verifica que el registro exista en ese archivo |
+| Mensajes de antes de instalar el receptor | No se pueden recuperar: WhatsApp no entrega historial antiguo al protocolo; la app registra lo que llega desde el enlace en adelante |
+| No llegan mensajes | La app solo ve mensajes nuevos tras el enlace (no lee el historial). Verifica que el ítem sea un documento/imagen (no un sticker/enlace) y que el registro esté en `data/documents.json` |
 | Descarga falla: media expirada | WhatsApp expira la media; la descarga solo funciona mientras la clave del mensaje siga vigente. El error se muestra en la UI |
 | "Impresora no encontrada" | `lpstat -p` / `lpadmin -p NOMBRE -E`; prueba `lp -d NOMBRE ~/WhatsAppDocs/archivo.pdf`. Revisa que `cups-client` esté instalado: `dnf list installed cups-client` |
 | `lp` imprime en otra impresora | Configura el nombre en el campo de la web (o `config.json → printer`) y guarda; deja vacío para la por defecto |

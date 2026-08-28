@@ -4,9 +4,11 @@
 // API:
 //   GET  /api/status            → { connected, loggedIn, requiresQr, lastMessageAt }
 //   GET  /api/qr                → { qrBase64 } (PNG) | 404
-//   GET  /api/documents         → { documents: [...] }
+//   GET  /api/documents         → { documents, total, offset, limit } (paginado)
 //   POST /api/documents/:id/download → { ok, fileName, path } | 404/500
+//   GET  /api/documents/:id/file    → sirve el archivo descargado (vista previa) | 404/409/403
 //   POST /api/documents/:id/print    → { ok, message } | 404/409/500
+//   GET  /api/chat/:jid/messages → { chat, messages: [...] } contexto del chat
 //   GET/POST /api/printer       → leer/guardar el nombre de impresora
 //   GET  /api/printers          → { printers: [...] } del sistema (lpstat -a)
 import http from 'node:http'
@@ -56,6 +58,16 @@ const EXT_POR_MIME = {
   'application/vnd.ms-excel': 'xls',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'application/zip': 'zip',
+}
+
+// Tipos de contenido para servir archivos (vista previa en el navegador).
+const ARCHIVO_MIME = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +220,24 @@ export function createApp({ config, api } = {}) {
       }
 
       if (req.method === 'GET' && p === '/api/documents') {
-        return json(res, 200, { documents: store.list().map(publico) })
+        const q = u.searchParams
+        const limit = Math.min(200, Math.max(1, parseInt(q.get('limit') || '25', 10) || 25))
+        const offset = Math.max(0, parseInt(q.get('offset') || '0', 10) || 0)
+        const todos = store.list()
+        const base = q.get('order') === 'asc' ? [...todos].reverse() : todos
+        return json(res, 200, {
+          documents: base.slice(offset, offset + limit).map(publico),
+          total: todos.length,
+          offset,
+          limit,
+        })
+      }
+
+      const mc = p.match(/^\/api\/chat\/([^/]+)\/messages$/)
+      if (req.method === 'GET' && mc) {
+        const jid = decodeURIComponent(mc[1])
+        const limit = Math.min(50, Math.max(1, parseInt(u.searchParams.get('limit') || '20', 10) || 20))
+        return json(res, 200, { chat: jid, messages: store.chatMessages(jid, limit) })
       }
 
       if (req.method === 'GET' && p === '/api/printer') {
@@ -227,8 +256,8 @@ export function createApp({ config, api } = {}) {
         return json(res, 200, { ok: true, printer: cfg.printer })
       }
 
-      const m = p.match(/^\/api\/documents\/([^/]+)\/(download|print)$/)
-      if (req.method === 'POST' && m) {
+      const m = p.match(/^\/api\/documents\/([^/]+)\/(download|print|file)$/)
+      if (req.method === 'POST' && m && m[2] !== 'file') {
         const id = decodeURIComponent(m[1])
         const doc = store.get(id)
         if (!doc) return json(res, 404, { error: 'Documento no encontrado' })
@@ -252,6 +281,35 @@ export function createApp({ config, api } = {}) {
         return json(res, resultado.ok ? 200 : 500, resultado)
       }
 
+      // --- vista previa: sirve el archivo descargado (solo desde downloadsDir)
+      if (req.method === 'GET' && m && m[2] === 'file') {
+        const id = decodeURIComponent(m[1])
+        const doc = store.get(id)
+        if (!doc) return json(res, 404, { error: 'Documento no encontrado' })
+        if (doc.status !== 'downloaded' || !doc.path) {
+          return json(res, 409, { error: 'El documento aún no está descargado' })
+        }
+        const base = path.resolve(cfg.downloadsDir)
+        const ruta = path.resolve(doc.path)
+        if (ruta !== base && !ruta.startsWith(base + path.sep)) {
+          return json(res, 403, { error: 'El archivo está fuera de la carpeta de descargas' })
+        }
+        try {
+          const stat = await fs.promises.stat(ruta)
+          const tipo = ARCHIVO_MIME[path.extname(ruta).toLowerCase()] || 'application/octet-stream'
+          res.writeHead(200, {
+            'Content-Type': tipo,
+            'Content-Length': stat.size,
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'no-store',
+          })
+          fs.createReadStream(ruta).pipe(res)
+          return
+        } catch (e) {
+          return json(res, 404, { error: `El archivo ya no existe: ${e.message}` })
+        }
+      }
+
       if (p === '/favicon.ico') {
         res.writeHead(204)
         return res.end()
@@ -270,6 +328,10 @@ export function createApp({ config, api } = {}) {
 
 function main() {
   const config = loadConfig()
+  // Recuperar el historial persistido: documentos y contexto de chats
+  // (si no se carga aquí, tras un reinicio la lista aparece vacía).
+  store.load()
+  store.chatLoad()
   const app = createApp({ config })
   app.listen(config.port, config.host, () => {
     console.log(`whatsapp-doc-receiver escuchando en http://${config.host}:${config.port}`)
@@ -280,6 +342,18 @@ function main() {
     onMessage: () => {
       lastMessageAt = new Date().toISOString()
       saveState()
+    },
+    onChatMessage: (_msg, info) => {
+      store.chatAdd({
+        id: _msg.key.id,
+        remoteJid: info.remoteJid,
+        fromMe: info.fromMe,
+        ts: info.ts,
+        kind: info.kind,
+        text: info.text,
+        filename: info.filename,
+        mime: info.mime,
+      })
     },
     onDocument: (msg, info) => {
       const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()

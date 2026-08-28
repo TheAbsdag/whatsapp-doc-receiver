@@ -1,4 +1,5 @@
 // Registro persistente de documentos recibidos: data/documents.json
+// Log de contexto por chat: data/chatlog.json (últimos mensajes por chat).
 // Escritura atómica (files.writeJsonAtomic) — nada de bases de datos.
 // El directorio de datos puede sobreescribirse con la variable de entorno
 // WHATSAPP_DOC_RECEIVER_DATA_DIR (útil para tests y data dirs alternativos).
@@ -7,8 +8,13 @@ import { readJson, writeJsonAtomic } from './files.js'
 
 export const DATA_DIR = path.resolve(process.env.WHATSAPP_DOC_RECEIVER_DATA_DIR || 'data')
 export const FILE = path.join(DATA_DIR, 'documents.json')
+const CHAT_FILE = path.join(DATA_DIR, 'chatlog.json')
+
+const CHAT_POR_JID = 20 // últimos mensajes que se conservan por chat
+const CHAT_MAX_TOTAL = 400 // tope global (20 chats con 20 mensajes, aprox.)
 
 let docs = [] // más recientes primero
+let chat = {} // jid → [msg, ...] más reciente primero
 
 export function load() {
   const data = readJson(FILE, null)
@@ -50,4 +56,49 @@ export function update(id, patch) {
 
 export function save() {
   writeJsonAtomic(FILE, docs)
+}
+
+// ---------------------------------------------------------------------------
+// Log de contexto por chat (data/chatlog.json)
+// ---------------------------------------------------------------------------
+
+export function chatLoad() {
+  const data = readJson(CHAT_FILE, null)
+  chat = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  return chat
+}
+
+/**
+ * Registra un mensaje de contexto. Idempotente por id; cada chat conserva a lo
+ * sumo CHAT_POR_JID mensajes y el log global CHAT_MAX_TOTAL (se descartan los
+ * más antiguos de los chats con menos actividad).
+ */
+export function chatAdd({ id, remoteJid, fromMe = false, ts, kind = 'otro', text = '', filename = '', mime = '' }) {
+  const jid = remoteJid || 'desconocido'
+  const lista = chat[jid] || (chat[jid] = [])
+  if (lista.some((m) => m.id === id)) return
+  lista.unshift({ id, remoteJid: jid, fromMe, ts, kind, text, filename, mime })
+  if (lista.length > CHAT_POR_JID) lista.length = CHAT_POR_JID
+
+  let total = Object.values(chat).reduce((n, l) => n + l.length, 0)
+  while (total > CHAT_MAX_TOTAL) {
+    const jidViejo = Object.keys(chat).sort((a, b) =>
+      String(chat[a][0]?.ts || '').localeCompare(String(chat[b][0]?.ts || '')),
+    )[0]
+    if (!jidViejo) break
+    chat[jidViejo].pop() // el más antiguo de ese chat (lista: más reciente primero)
+    if (!chat[jidViejo].length) delete chat[jidViejo]
+    total--
+  }
+  chatSave()
+}
+
+/** Últimos `limit` mensajes de un chat, en orden cronológico (antiguo → reciente). */
+export function chatMessages(jid, limit = 20) {
+  const lista = chat[jid] || []
+  return [...lista.slice(0, limit)].reverse()
+}
+
+export function chatSave() {
+  writeJsonAtomic(CHAT_FILE, chat)
 }

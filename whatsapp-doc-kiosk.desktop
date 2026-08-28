@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=WhatsApp Doc Receiver (kiosko)
-Comment=Abre el receptor de documentos a pantalla completa en cada inicio de sesión
+Name=WhatsApp Doc Receiver (web)
+Comment=Abre el receptor de documentos una vez en el navegador predeterminado, al iniciar sesión
 Exec=/path/a/reemplazar/whatsapp-doc-receiver/kiosk.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true
