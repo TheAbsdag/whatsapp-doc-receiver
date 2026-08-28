@@ -136,7 +136,7 @@ git tag v1.0.0 && git push origin v1.0.0
 #   whatsapp-doc-receiver-1.0.0-windows-latest.tgz
 ```
 
-Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data`. En Windows se abren con `tar.exe` (incluido en Windows 10+) o 7-Zip; en Linux, `tar xzf`. Los tres pasos del workflow (tests, empaquetado, release con `gh release`) fueron validados localmente salvo la ejecución en los runners de GitHub, que requiere el repo público/privado creado y el tag.
+Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data`. En Windows se abren con `tar.exe` (incluido en Windows 10+) o 7-Zip; en Linux, `tar xzf`. El flujo completo (tests en ambos SO + empaquetado + release) quedó validado end-to-end: la release `v1.0.0` se generó en GitHub Actions con los artefactos de Ubuntu y Windows.
 
 ## Uso diario
 
