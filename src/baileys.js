@@ -2,6 +2,9 @@
 // - Sesión persistente en data/auth (no vuelve a pedir QR salvo desvinculación).
 // - Reconexión automática ante 'close' con backoff; QR fresco si la sesión se
 //   desvincula (DisconnectReason.loggedOut → se limpia data/auth).
+// - Mensajes: se procesan 'notify' (tiempo real) Y 'append' (catch-up de lo
+//   recibido con el equipo apagado al reconectar) + 'messaging-history.set'
+//   (historial que el teléfono envía al vincular). Todo se deduplica por id.
 // - El keep-alive / autoping de la conexión lo maneja Baileys internamente
 //   (ping periódico del WebSocket), no hay que hacer nada extra.
 // - Logs tranquilos: pino en nivel 'warn'.
@@ -88,6 +91,17 @@ function extraerChat(msg) {
   }
 }
 
+/**
+ * ¿Es un mensaje con contenido de chat (texto, documento o imagen)?
+ * Filtra protocolMessage (sincronización, revocaciones, ediciones), reacciones,
+ * llamadas y demás ruido que llega por 'append' y por el historial.
+ */
+function esContexto(msg) {
+  const m = msg?.message || null
+  if (!m || m.protocolMessage) return false
+  return !!(m.conversation || m.extendedTextMessage || m.documentMessage || m.imageMessage)
+}
+
 async function conectar(handlers) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
@@ -104,6 +118,11 @@ async function conectar(handlers) {
     auth,
     logger,
     generateHighQualityLinkPreview: false, // ahorra procesamiento/RAM
+    // B: acepta la sincronización de historial que el teléfono ofrezca al
+    // vincular (por defecto Baileys la descarta con syncFullHistory:false).
+    // NO se pide historial completo (requireFullSync sigue en false): solo se
+    // registra lo que WhatsApp decida compartir (INITIAL_BOOTSTRAP/RECENT).
+    shouldSyncHistoryMessage: () => true,
   })
 
   sock.ev.on('creds.update', saveCreds)
@@ -144,13 +163,13 @@ async function conectar(handlers) {
     }
   })
 
-  sock.ev.on('messages.upsert', ({ messages, type }) => {
-    if (type !== 'notify') return
-    if (handlers.onMessage) handlers.onMessage()
+  // Despacha una lista de mensajes a los handlers: documentos al registro y
+  // contexto del chat al log acotado. Los dos stores se deduplican por id, así
+  // que es seguro que un mismo mensaje llegue por varias vías (historial,
+  // catch-up y tiempo real).
+  const despachar = (messages) => {
     for (const msg of messages) {
-      // Contexto del chat: todo mensaje nuevo (texto o media) alimenta el
-      // log acotado por chat; también los enviados desde el teléfono vinculado.
-      if (handlers.onChatMessage) {
+      if (handlers.onChatMessage && esContexto(msg)) {
         const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()
         handlers.onChatMessage(msg, {
           remoteJid: msg.key.remoteJid || '',
@@ -159,13 +178,28 @@ async function conectar(handlers) {
           ...extraerChat(msg),
         })
       }
-      // Se procesan TODOS los documentos: recibidos y también los que se
-      // envían desde el teléfono vinculado (msg.key.fromMe === true).
       const info = extraerDocumento(msg)
       if (info && handlers.onDocument) {
         handlers.onDocument(msg, info)
       }
     }
+  }
+
+  sock.ev.on('messages.upsert', ({ messages, type }) => {
+    // A: 'append' = mensajes acumulados mientras el socket estuvo caído
+    // (catch-up "offline" al reconectar) y notificaciones; 'notify' =
+    // mensajes nuevos en tiempo real. Antes solo se veía 'notify' y los
+    // documentos recibidos con el equipo apagado se perdían.
+    if (type !== 'notify' && type !== 'append') return
+    if (handlers.onMessage) handlers.onMessage()
+    despachar(messages)
+  })
+
+  // B: historial sincronizado que el teléfono envía al vincular un dispositivo
+  // (y, en algunos casos, en reconexiones). No se toca lastMessageAt: son
+  // mensajes antiguos, no llegadas nuevas.
+  sock.ev.on('messaging-history.set', ({ messages }) => {
+    if (Array.isArray(messages) && messages.length) despachar(messages)
   })
 }
 

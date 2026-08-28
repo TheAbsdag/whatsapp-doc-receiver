@@ -316,6 +316,22 @@ console.log('\n[14] Historial tras "reinicio" (el store debe recargar desde disc
   ok(store.chatMessages('5491155555555@s.whatsapp.net', 3).length === 3, 'chatlog recuperado tras reinicio')
 }
 
+console.log('\n[15] Idempotencia: historial + catch-up + tiempo real pueden repetir el mismo mensaje')
+{
+  const jid = '5491155555555@s.whatsapp.net'
+  const antes = store.list().length
+  store.add(registro('TESTDOC-1', 'Informe.pdf')) // mismo id que ya existía
+  ok(store.list().length === antes, 'store.add con id existente no duplica (historial = catch-up)')
+
+  const n = store.chatMessages(jid, 50).length
+  store.chatAdd({ id: 'CT-24', remoteJid: jid, ts: new Date().toISOString(), kind: 'texto', text: 'repetido' })
+  ok(store.chatMessages(jid, 50).length === n, 'chatAdd con id existente no duplica')
+  store.chatAdd({ id: 'CT-HIST-1', remoteJid: jid, ts: new Date(2023, 0, 1).toISOString(), kind: 'documento', text: 'documento del historial', filename: 'viejo.pdf', mime: 'application/pdf' })
+  const lista = store.chatMessages(jid, 50)
+  ok(lista.some((m) => m.id === 'CT-HIST-1') && lista.filter((m) => m.id === 'CT-HIST-1').length === 1,
+    'mensaje que llega por el historial se registra una sola vez')
+}
+
 server.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 console.log(`\n${fallos === 0 ? 'SIMULACIÓN OK — todas las comprobaciones pasaron' : `SIMULACIÓN CON ${fallos} FALLOS`}`)
