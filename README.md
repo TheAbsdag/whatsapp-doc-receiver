@@ -46,7 +46,7 @@ cd ~/whatsapp-doc-receiver && chmod +x instalar.sh kiosk.sh Instalar.desktop
 4. Configura la **apertura automática**: en el próximo inicio de sesión la web se abre sola UNA vez en el navegador predeterminado (`xdg-open`, sin pantalla completa), y crea un acceso directo **"Receptor de documentos"** en el escritorio para reabrirla a mano.
 5. Espera a que la web responda y la abre para **escanear el QR** con WhatsApp.
 
-El detalle de todo queda en `instalacion.log` (dentro de la carpeta del proyecto). Re-ejecutable: si ya está instalado, solo lo deja arriba y reabre la web.
+El detalle de todo queda en `instalacion.log` (dentro de la carpeta del proyecto). **Re-ejecutable = actualizable**: si la carpeta es un clon Git, el instalador baja la última versión (`git pull --ff-only`) y siempre **reinicia el servicio** (así aplica también archivos copiados a mano, no solo `npm install`); al final reabre la web.
 
 **Pantalla táctil:** la web está optimizada con `@media (pointer: coarse)` — botones de al menos 48 px, texto y filas mayores en dispositivos táctiles, y el refresco automático se pausa mientras se toca una acción (el toque nunca se pierde).
 
@@ -103,7 +103,7 @@ El mismo proyecto corre en Windows 10/11: el núcleo (Baileys + HTTP + web) es 1
 powershell -ExecutionPolicy Bypass -File .\instalar.ps1
 ```
 
-`instalar.ps1` verifica Node 20+, hace `npm install`, crea y arranca la tarea programada **`whatsapp-doc-receiver`** (OnLogon, reinicio ante fallos cada 1 min — equivalente a `Restart=on-failure`), registra **`whatsapp-doc-web`** (abre el **navegador predeterminado** con la web UNA vez al iniciar sesión, sin pantalla completa; **desregistra el antiguo kiosko** de Edge si existía) y crea el acceso directo **Receptor de documentos.lnk** en el escritorio. Al final abre la web para el QR. Detalle en `instalacion-windows.log`. Para desinstalar: `Unregister-ScheduledTask whatsapp-doc-receiver` (y `whatsapp-doc-web`).
+`instalar.ps1` verifica Node 20+, hace `npm install`, **actualiza desde Git** (si la carpeta es un clon; si no, avisa y sigue con lo existente), crea y **reinicia** la tarea programada **`whatsapp-doc-receiver`** (OnLogon, reinicio ante fallos cada 1 min — equivalente a `Restart=on-failure`), registra **`whatsapp-doc-web`** (abre el **navegador predeterminado** con la web UNA vez al iniciar sesión, sin pantalla completa; **desregistra el antiguo kiosko** de Edge si existía) y crea el acceso directo **Receptor de documentos.lnk** en el escritorio. Al final abre la web para el QR. Detalle en `instalacion-windows.log`. Para desinstalar: `Unregister-ScheduledTask whatsapp-doc-receiver` (y `whatsapp-doc-web`).
 
 **Diferencias con Linux:**
 
@@ -234,6 +234,7 @@ En la máquina Fedora, sustituye la impresora simulada por una real: `lpstat -p`
 | Documentos anteriores no aparecen tras reiniciar | Desde esta versión se recargan solos (se guardan en `data/documents.json` y el arranque los carga). Si no aparecen, verifica que el registro exista en ese archivo |
 | Mensajes de antes de instalar el receptor | No se pueden recuperar: WhatsApp no entrega historial antiguo al protocolo. Al vincular, el receptor registra lo que el teléfono envíe en la sincronización inicial (chats recientes, no garantizado) y desde ahí en adelante |
 | Ver qué falla (documentos anteriores, conexión, descargas) | Botón **"Logs"** en la web (últimas 120 líneas de `data/receptor-debug.log`; también `data/baileys.log` con el detalle JSON del protocolo) |
+| ¿Cómo aplico una actualización? | **Re-ejecutá el instalador** (`Instalar.desktop` / `instalar.ps1`): baja la última versión `git pull` **si la carpeta es un clon Git** y REINICIA el servicio (aplica también archivos copiados a mano). Si no es un clon, copiá los archivos nuevos y reiniciá: `systemctl --user restart whatsapp-doc-receiver` / `Restart-ScheduledTask whatsapp-doc-receiver` |
 | "No se pudo leer el log: No encontrado" | El servicio está corriendo **código viejo** (la página y el botón vienen de disco, pero el proceso en memoria no tiene la ruta). Reiniciá el servicio: `Restart-ScheduledTask whatsapp-doc-receiver` (Windows) o `systemctl --user restart whatsapp-doc-receiver` (Linux), y recargá la página con F5. La cabecera debe mostrar `v1.0.0` |
 | No llegan mensajes | La app ve mensajes nuevos tras el enlace (+ catch-up al reconectar). Verifica que el ítem sea un documento/imagen (no un sticker/enlace) y que el registro esté en `data/documents.json` |
 | Descarga falla: media expirada | WhatsApp expira la media; la descarga solo funciona mientras la clave del mensaje siga vigente. El error se muestra en la UI |

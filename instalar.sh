@@ -5,10 +5,12 @@
 # Qué hace (sin pedir nada al usuario):
 #   1. Verifica/instala Node.js 20+ y cups-client (si hay sudo sin contraseña).
 #   2. npm install (baileys + pino + qrcode).
-#   3. Genera e instala el servicio systemd de USUARIO y lo arranca.
-#   4. Configura la apertura AUTOMÁTICA en el navegador predeterminado (una vez,
+#   3. Si la carpeta es un clon Git, ACTUALIZA el código (git pull).
+#   4. Genera e instala el servicio systemd de USUARIO y lo REINICIA (aplica
+#      el código nuevo aunque ya estuviera corriendo).
+#   5. Configura la apertura AUTOMÁTICA en el navegador predeterminado (una vez,
 #      sin pantalla completa) para el próximo login + acceso directo para reabrir.
-#   5. Espera la web y la abre para escanear el QR de WhatsApp.
+#   6. Espera la web y la abre para escanear el QR de WhatsApp.
 #
 # Sin teclado: los mensajes van por ventanas zenity (mouse) y todo el detalle
 # queda en instalar.log dentro de la carpeta del proyecto.
@@ -80,6 +82,23 @@ fi
 log "Dependencias OK"
 
 # ---------------------------------------------------------------------------
+# 3-bis) Actualizar código: si la carpeta es un clon Git, baja la última
+# versión del repositorio (con esto doble clic en Instalar.desktop = actualizar).
+# Si no es un clon, avisa (la actualización se hace copiando los archivos).
+# ---------------------------------------------------------------------------
+if [ -d "$DIR/.git" ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    aviso error "La carpeta es un clon Git pero 'git' no está instalado.\n(Una vez, con teclado: sudo dnf install git)"
+  elif git -C "$DIR" pull --ff-only origin main >>"$LOG" 2>&1; then
+    log "Código actualizado: $(git -C "$DIR" log -1 --format='%h %s')"
+  else
+    aviso error "Falló 'git pull' de $DIR (cambios locales o sin red).\nSe continúa con lo que hay en $DIR — revisá $LOG"
+  fi
+else
+  aviso info "La carpeta NO es un clon Git: se usa el código que ya está en $DIR.\nPara actualizar: copiá los archivos nuevos (src/ y la raíz) sobre esta carpeta — este instalador igual REINICIA el servicio y los aplica.\n\nPara actualizaciones de un clic en el futuro, cloná en una carpeta nueva:\n\n  git clone https://github.com/TheAbsdag/whatsapp-doc-receiver.git\n  (y copiá la carpeta data/ de la instalación actual para conservar sesión y documentos)"
+fi
+
+# ---------------------------------------------------------------------------
 # 4) Servicio systemd de usuario (con node real y ruta real del proyecto)
 # ---------------------------------------------------------------------------
 NODE_BIN=$(command -v node)
@@ -91,7 +110,10 @@ sed -e "s|^ExecStart=.*|ExecStart=$NODE_BIN src/index.js|" \
 log "Unidad del servicio: $NODE_BIN · $DIR"
 
 systemctl --user daemon-reload >/dev/null 2>&1
-systemctl --user enable --now whatsapp-doc-receiver >>"$LOG" 2>&1 || true
+systemctl --user enable whatsapp-doc-receiver >>"$LOG" 2>&1 || true
+# restart (no solo --now): aplica código nuevo aunque el servicio ya estuviera
+# corriendo — clave cuando se actualizan archivos copiados a mano.
+systemctl --user restart whatsapp-doc-receiver >>"$LOG" 2>&1 || true
 
 # esperar a que el servicio quede activo (hasta 15 s)
 estado="inactivo"
