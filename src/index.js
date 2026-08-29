@@ -9,6 +9,7 @@
 //   GET  /api/documents/:id/file    → sirve el archivo descargado (vista previa) | 404/409/403
 //   POST /api/documents/:id/print    → { ok, message } | 404/409/500
 //   GET  /api/chat/:jid/messages → { chat, messages: [...] } contexto del chat
+//   GET  /api/debug-log          → { file, lines } últimas líneas del log de diagnóstico
 //   GET/POST /api/printer       → leer/guardar el nombre de impresora
 //   GET  /api/printers          → { printers: [...] } del sistema (lpstat -a)
 import http from 'node:http'
@@ -21,6 +22,7 @@ import * as baileys from './baileys.js'
 import * as store from './store.js'
 import { readJson, writeJsonAtomic, saveDownload, sanitizeFilename } from './files.js'
 import { printDocument, listPrinters } from './printer.js'
+import { dbg, debugInit, leerUltimas, DEBUG_FILE } from './diag.js'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const WEB_DIR = path.join(ROOT, 'src', 'web')
@@ -240,6 +242,10 @@ export function createApp({ config, api } = {}) {
         return json(res, 200, { chat: jid, messages: store.chatMessages(jid, limit) })
       }
 
+      if (req.method === 'GET' && p === '/api/debug-log') {
+        return json(res, 200, { file: DEBUG_FILE, lines: leerUltimas(120) })
+      }
+
       if (req.method === 'GET' && p === '/api/printer') {
         return json(res, 200, { printer: cfg.printer || '' })
       }
@@ -267,17 +273,21 @@ export function createApp({ config, api } = {}) {
             const buffer = await iface.downloadMedia(doc.message)
             const salida = saveDownload(buffer, cfg.downloadsDir, doc.filename)
             store.update(id, { status: 'downloaded', path: salida, downloadedAt: new Date().toISOString() })
+            dbg(`API descarga OK: ${doc.filename} → ${salida}`)
             return json(res, 200, { ok: true, fileName: path.basename(salida), path: salida })
           } catch (e) {
+            dbg(`ERROR API descarga ${id} (${doc.filename}):`, e?.stack || String(e))
             return json(res, 500, { error: `No se pudo descargar: ${e.message}` })
           }
         }
 
         // --- print
         if (doc.status !== 'downloaded' || !doc.path) {
+          dbg(`API print rechazado ${id}: aún no descargado`)
           return json(res, 409, { error: 'El documento aún no está descargado' })
         }
         const resultado = await printDocument(doc.path, cfg)
+        if (!resultado.ok) dbg(`ERROR API print ${id} (${doc.filename}):`, resultado.message)
         return json(res, resultado.ok ? 200 : 500, resultado)
       }
 
@@ -327,11 +337,26 @@ export function createApp({ config, api } = {}) {
 // ---------------------------------------------------------------------------
 
 function main() {
+  debugInit(`whatsapp-doc-receiver (proceso ${process.pid})`)
   const config = loadConfig()
   // Recuperar el historial persistido: documentos y contexto de chats
   // (si no se carga aquí, tras un reinicio la lista aparece vacía).
   store.load()
   store.chatLoad()
+  dbg('Arranque:', {
+    host: config.host,
+    port: config.port,
+    downloadsDir: config.downloadsDir,
+    printer: config.printer || '(por defecto)',
+    documentosEnDisco: store.list().length,
+    mensajesDeContextoEnDisco: store.chatCount(),
+  })
+
+  // Errores no capturados: que queden en el log de diagnóstico (la UI muestra
+  // el botón "Logs") y no se pierdan en la nada.
+  process.on('uncaughtException', (e) => dbg('ERROR GLOBAL uncaughtException:', e?.stack || String(e)))
+  process.on('unhandledRejection', (e) => dbg('ERROR GLOBAL unhandledRejection:', e?.stack || String(e)))
+
   const app = createApp({ config })
   app.listen(config.port, config.host, () => {
     console.log(`whatsapp-doc-receiver escuchando en http://${config.host}:${config.port}`)

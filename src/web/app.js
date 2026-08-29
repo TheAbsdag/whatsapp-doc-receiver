@@ -433,6 +433,20 @@ async function principal() {
   }
 
   $('#btn-qr').addEventListener('click', cargarQr);
+
+  // Registro de diagnóstico: permite ver qué está fallando sin abrir archivos.
+  $('#btn-logs').addEventListener('click', async () => {
+    try {
+      const r = await api('/api/debug-log');
+      $('#logs-titulo').textContent = `Registro: ${r.file}`;
+      $('#logs-contenido').textContent = (r.lines || []).join('\n') || '(sin líneas)';
+      $('#logs-panel').hidden = false;
+    } catch (e) {
+      setMensaje('No se pudo leer el log: ' + e.message, true);
+    }
+  });
+  $('#logs-cerrar').addEventListener('click', () => { $('#logs-panel').hidden = true; });
+
   $('#btn-actualizar').addEventListener('click', () => {
     refresh();
     cargarImpresoras();

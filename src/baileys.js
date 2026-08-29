@@ -17,8 +17,17 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   downloadMediaMessage,
 } from '@whiskeysockets/baileys'
+import { dbg } from './diag.js'
 
-const logger = pino({ level: 'warn' })
+const DATA_DIR = path.resolve(process.env.WHATSAPP_DOC_RECEIVER_DATA_DIR || 'data')
+const BAIL_LOGFILE = path.join(DATA_DIR, 'baileys.log')
+fs.mkdirSync(DATA_DIR, { recursive: true })
+// Pino interno de Baileys a ARCHIVO (JSON): los warnings/errores del protocolo
+// (p. ej. fallo al descargar el blob de historial) quedan visibles.
+const logger = pino(
+  { level: process.env.WHATSAPP_DOC_RECEIVER_LOG_LEVEL || 'warn' },
+  pino.destination(BAIL_LOGFILE),
+)
 
 const AUTH_DIR = path.resolve(process.env.WHATSAPP_DOC_RECEIVER_AUTH_DIR || 'data/auth')
 
@@ -104,12 +113,15 @@ function esContexto(msg) {
 
 async function conectar(handlers) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })
+  dbg('BAILEYS conectar(): sesión en', AUTH_DIR)
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
 
   let version
   try {
     version = (await fetchLatestBaileysVersion()).version
-  } catch {
+    dbg('BAILEYS versión Baileys:', version?.join('.') || 'desconocida')
+  } catch (e) {
+    dbg('BAILEYS advertencia: no se pudo consultar la versión de Baileys:', e?.message)
     logger.warn('No se pudo consultar la versión de Baileys; se usará la por defecto')
   }
 
@@ -129,6 +141,10 @@ async function conectar(handlers) {
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update
+    const estadoMsg = connection
+      ? `conexión=${connection}`
+      : qr ? 'qr=nuevo' : `actualización=${Object.keys(update).join(',')}`
+    dbg('BAILEYS connection.update:', estadoMsg)
 
     if (qr) {
       estado.qrString = qr
@@ -141,11 +157,13 @@ async function conectar(handlers) {
       estado.loggedIn = true
       estado.requiresQr = false
       estado.qrString = null
+      dbg('BAILEYS conectado a WhatsApp')
       logger.info('WhatsApp conectado')
     } else if (connection === 'close') {
       estado.connected = false
       const code = lastDisconnect?.error?.output?.statusCode
       const desvinculado = code === DisconnectReason.loggedOut
+      dbg('BAILEYS conexión cerrada:', { estado: lastDisconnect?.error?.message || 'sin detalle', code, desvinculado })
 
       if (desvinculado) {
         logger.warn('Sesión desvinculada desde el teléfono: se requiere un QR nuevo')
@@ -167,20 +185,45 @@ async function conectar(handlers) {
   // contexto del chat al log acotado. Los dos stores se deduplican por id, así
   // que es seguro que un mismo mensaje llegue por varias vías (historial,
   // catch-up y tiempo real).
-  const despachar = (messages) => {
+  const despachar = (messages, origen) => {
     for (const msg of messages) {
-      if (handlers.onChatMessage && esContexto(msg)) {
-        const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()
-        handlers.onChatMessage(msg, {
-          remoteJid: msg.key.remoteJid || '',
-          fromMe: !!msg.key.fromMe,
-          ts: new Date(ts).toISOString(),
-          ...extraerChat(msg),
-        })
-      }
-      const info = extraerDocumento(msg)
-      if (info && handlers.onDocument) {
-        handlers.onDocument(msg, info)
+      try {
+        const id = msg?.key?.id || '(sin id)'
+        const jid = msg?.key?.remoteJid || '(sin jid)'
+
+        // ¿Notificación de historial de WhatsApp? Log del antes/después: si se
+        // ve aquí pero NO llega 'messaging-history.set', el fallo es interno de
+        // Baileys (descarga/descifrado del blob).
+        const histNotif = msg?.message?.protocolMessage?.historySyncNotification
+        if (histNotif) {
+          dbg(`BAILEYS [${origen}] notificación de SINCRONIZACIÓN DE HISTORIAL recibida:`, {
+            syncType: histNotif.syncType,
+            id,
+            jid,
+          })
+        }
+
+        const infoDoc = extraerDocumento(msg)
+        if (handlers.onChatMessage && esContexto(msg)) {
+          const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()
+          const ch = extraerChat(msg)
+          handlers.onChatMessage(msg, {
+            remoteJid: jid,
+            fromMe: !!msg.key.fromMe,
+            ts: new Date(ts).toISOString(),
+            ...ch,
+          })
+          dbg(`BAILEYS [${origen}] contexto:`, { id, jid, kind: ch.kind, filename: ch.filename || '', texto: ch.text.slice(0, 80) })
+        } else if (!infoDoc) {
+          dbg(`BAILEYS [${origen}] mensaje SIN contenido registrable:`, { id, jid, tieneProtocolo: !!(msg?.message?.protocolMessage) })
+        }
+
+        if (infoDoc && handlers.onDocument) {
+          handlers.onDocument(msg, infoDoc)
+          dbg(`BAILEYS [${origen}] DOCUMENTO registrado:`, { id, jid, filename: infoDoc.filename, mime: infoDoc.mime, size: infoDoc.size, fromMe: !!msg.key.fromMe })
+        }
+      } catch (e) {
+        dbg(`ERROR BAILEYS [${origen}] procesando mensaje ${msg?.key?.id || '?'}:`, e?.stack || String(e))
       }
     }
   }
@@ -190,16 +233,26 @@ async function conectar(handlers) {
     // (catch-up "offline" al reconectar) y notificaciones; 'notify' =
     // mensajes nuevos en tiempo real. Antes solo se veía 'notify' y los
     // documentos recibidos con el equipo apagado se perdían.
+    dbg(`BAILEYS messages.upsert:`, { type, cantidad: messages?.length || 0 })
     if (type !== 'notify' && type !== 'append') return
     if (handlers.onMessage) handlers.onMessage()
-    despachar(messages)
+    despachar(messages, `upsert:${type}`)
   })
 
   // B: historial sincronizado que el teléfono envía al vincular un dispositivo
   // (y, en algunos casos, en reconexiones). No se toca lastMessageAt: son
   // mensajes antiguos, no llegadas nuevas.
-  sock.ev.on('messaging-history.set', ({ messages }) => {
-    if (Array.isArray(messages) && messages.length) despachar(messages)
+  sock.ev.on('messaging-history.set', ({ chats, contacts, messages, isLatest, progress, syncType }) => {
+    dbg('BAILEYS messaging-history.set RECIBIDO:', {
+      chats: chats?.length || 0,
+      contacts: contacts?.length || 0,
+      messages: messages?.length || 0,
+      syncType,
+      progress,
+      isLatest,
+    })
+    if (Array.isArray(messages) && messages.length) despachar(messages, 'historial')
+    else dbg('BAILEYS messaging-history.set sin mensajes (solo chats/contactos)')
   })
 }
 
@@ -209,9 +262,11 @@ function reconectar(handlers) {
   // backoff simple: 2s, 4s, 8s… máx 30s. La app reinicia la conexión sola
   // (además del Restart del servicio systemd si llegara a caerse el proceso).
   const retraso = Math.min(30_000, 1000 * 2 ** Math.min(intento, 5))
+  dbg(`BAILEYS reconectando en ${Math.round(retraso / 1000)} s (intento ${intento})`)
   logger.warn(`Reconectando en ${Math.round(retraso / 1000)} s (intento ${intento})`)
   timerReconexion = setTimeout(() => {
     conectar(handlers).catch((err) => {
+      dbg('ERROR BAILEYS al conectar (se reintentará):', err?.stack || String(err))
       logger.error({ err }, 'Error al conectar con Baileys')
       reconectar(handlers)
     })
@@ -228,7 +283,9 @@ export function start(handlers = {}) {
   fs.mkdirSync(AUTH_DIR, { recursive: true })
   estado.requiresQr = !fs.existsSync(path.join(AUTH_DIR, 'creds.json'))
   estado.loggedIn = !estado.requiresQr
+  dbg('BAILEYS start():', { requiereQr: estado.requiresQr, hayCreds: !estado.requiresQr, authDir: AUTH_DIR })
   conectar(handlers).catch((err) => {
+    dbg('ERROR BAILEYS al iniciar (se reintentará):', err?.stack || String(err))
     logger.error({ err }, 'Error al iniciar Baileys; se reintentará')
     reconectar(handlers)
   })

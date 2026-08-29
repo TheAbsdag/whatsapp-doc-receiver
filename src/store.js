@@ -99,6 +99,11 @@ export function chatMessages(jid, limit = 20) {
   return [...lista.slice(0, limit)].reverse()
 }
 
+/** Número total de mensajes de contexto guardados. */
+export function chatCount() {
+  return Object.keys(chat).reduce((n, j) => n + (chat[j]?.length || 0), 0)
+}
+
 export function chatSave() {
   writeJsonAtomic(CHAT_FILE, chat)
 }

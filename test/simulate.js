@@ -17,6 +17,7 @@ fs.mkdirSync(TMP, { recursive: true })
 
 process.env.WHATSAPP_DOC_RECEIVER_DATA_DIR = path.join(TMP, 'data')
 process.env.WHATSAPP_DOC_RECEIVER_TMP_DIR = TMP
+process.env.WHATSAPP_DOC_RECEIVER_DEBUG_LOG = path.join(TMP, 'receptor-debug.log')
 process.env.FAKE_LP_LOG = path.join(TMP, 'lp.log')
 
 const { sanitizeFilename, saveDownload } = await import('../src/files.js')
@@ -330,6 +331,16 @@ console.log('\n[15] Idempotencia: historial + catch-up + tiempo real pueden repe
   const lista = store.chatMessages(jid, 50)
   ok(lista.some((m) => m.id === 'CT-HIST-1') && lista.filter((m) => m.id === 'CT-HIST-1').length === 1,
     'mensaje que llega por el historial se registra una sola vez')
+}
+
+console.log('\n[16] Log de diagnóstico (botón "Logs" de la web)')
+{
+  const diag = await import('../src/diag.js')
+  diag.dbg('TEST: línea de diagnóstico')
+  const r = await api('/api/debug-log')
+  ok(r.status === 200 && Array.isArray(r.data.lines), `GET /api/debug-log → ${r.status}, ${r.data.lines?.length || 0} líneas`)
+  ok(r.data.lines.some((l) => l.includes('TEST: línea de diagnóstico')), 'la línea escrita aparece en el log')
+  ok(typeof r.data.file === 'string' && fs.existsSync(r.data.file), `archivo del log visible: ${r.data.file}`)
 }
 
 server.close()

@@ -16,6 +16,7 @@
       <span id="ultimo-mensaje"></span>
       <button id="btn-qr" type="button">Escanear QR</button>
       <button id="btn-notif" type="button" hidden>Activar notificaciones</button>
+      <button id="btn-logs" type="button">Logs</button>
     </div>
   </header>
 
@@ -77,6 +78,14 @@
         <button id="preview-cerrar" type="button">✕</button>
       </div>
       <div id="preview-contenido"></div>
+    </div>
+
+    <div id="logs-panel" hidden>
+      <div class="panel-cab">
+        <span id="logs-titulo">Registro de diagnóstico</span>
+        <button id="logs-cerrar" type="button">✕</button>
+      </div>
+      <pre id="logs-contenido"></pre>
     </div>
 
     <p id="mensaje" class="mensaje"></p>

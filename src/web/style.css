@@ -215,6 +215,41 @@ td button + button { margin-left: 6px; }
 #preview-contenido iframe { width: 100%; height: 100%; border: 0; }
 #preview-contenido img { max-width: 100%; max-height: 74vh; }
 
+/* ==========================================================================
+   Registro de diagnóstico (botón "Logs")
+   ========================================================================== */
+#logs-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(15, 23, 42, .6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#logs-panel[hidden] { display: none; }
+#logs-panel .panel-cab {
+  width: min(900px, 100%);
+  border-radius: 10px 10px 0 0;
+}
+#logs-contenido {
+  width: min(900px, 100%);
+  height: min(70vh, 700px);
+  margin: 0;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0 0 10px 10px;
+  padding: 12px 14px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: .78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 
 /* ==========================================================================
    Pantalla táctil (kiosko sin teclado): objetivos ≥48 px, texto mayor,

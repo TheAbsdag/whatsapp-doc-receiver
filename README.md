@@ -158,6 +158,7 @@ Servicio arriba → documento recibido → tabla (25 por página) → **Vista pr
 | `GET /api/documents/:id/file` | sirve el archivo descargado (vista previa; solo desde `downloadsDir`) |
 | `POST /api/documents/:id/print` | ejecuta `lp` → `{ ok, message }` |
 | `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=20`) |
+| `GET /api/debug-log` | `{ file, lines }` — últimas líneas del log de diagnóstico (`data/receptor-debug.log`) |
 | `GET/POST /api/printer` | leer/guardar el nombre de impresora |
 | `GET /api/printers` | `{ printers: [...], error? }` — impresoras del sistema (`lpstat -a`) |
 
@@ -193,6 +194,7 @@ src/
   index.js               # servidor HTTP plano + API + arranque
   baileys.js             # conexión, QR, reconexión, descarga de media
   store.js               # data/documents.json + chatlog.json (JSON atómico)
+  diag.js                # registro de diagnóstico en data/receptor-debug.log
   printer.js             # lp/lpstat (CUPS) y SumatraPDF/Get-Printer (Windows)
   files.js               # saneado de nombres, colisiones, escritura atómica
   web/                   # index.html, app.js, style.css
@@ -231,6 +233,7 @@ En la máquina Fedora, sustituye la impresora simulada por una real: `lpstat -p`
 | Sesión desvinculada / otro teléfono | La app lo detecta (`DisconnectReason.loggedOut`), limpia `data/auth/` y muestra un QR fresco en la web. Si no aparece: `systemctl --user restart whatsapp-doc-receiver` |
 | Documentos anteriores no aparecen tras reiniciar | Desde esta versión se recargan solos (se guardan en `data/documents.json` y el arranque los carga). Si no aparecen, verifica que el registro exista en ese archivo |
 | Mensajes de antes de instalar el receptor | No se pueden recuperar: WhatsApp no entrega historial antiguo al protocolo. Al vincular, el receptor registra lo que el teléfono envíe en la sincronización inicial (chats recientes, no garantizado) y desde ahí en adelante |
+| Ver qué falla (documentos anteriores, conexión, descargas) | Botón **"Logs"** en la web (últimas 120 líneas de `data/receptor-debug.log`; también `data/baileys.log` con el detalle JSON del protocolo) |
 | No llegan mensajes | La app ve mensajes nuevos tras el enlace (+ catch-up al reconectar). Verifica que el ítem sea un documento/imagen (no un sticker/enlace) y que el registro esté en `data/documents.json` |
 | Descarga falla: media expirada | WhatsApp expira la media; la descarga solo funciona mientras la clave del mensaje siga vigente. El error se muestra en la UI |
 | "Impresora no encontrada" | `lpstat -p` / `lpadmin -p NOMBRE -E`; prueba `lp -d NOMBRE ~/WhatsAppDocs/archivo.pdf`. Revisa que `cups-client` esté instalado: `dnf list installed cups-client` |
