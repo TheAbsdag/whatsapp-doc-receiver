@@ -107,3 +107,43 @@ export function chatCount() {
 export function chatSave() {
   writeJsonAtomic(CHAT_FILE, chat)
 }
+
+// ---------------------------------------------------------------------------
+// Nombres visibles de contactos (data/contactos.json)
+// El historial sincronizado trae { id, name, lid, jid } y las notificaciones en
+// vivo traen { id, notify }: se guardan para mostrar el apodo/nombre del
+// remitente aunque el mensaje venga SIN pushName (historial/catch-up con @lid).
+// ---------------------------------------------------------------------------
+
+const CONTACTOS_FILE = path.join(DATA_DIR, 'contactos.json')
+const CONTACTOS_MAX = 1000
+
+let contactos = {} // jid → nombre visible
+
+export function contactosLoad() {
+  const data = readJson(CONTACTOS_FILE, null)
+  contactos = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  return contactos
+}
+
+/** Guarda un nombre visible bajo una clave (jid/lid/teléfono). */
+export function contactosSet(jid, nombre) {
+  if (!jid || !nombre) return false
+  if (contactos[jid] === nombre) return false
+  contactos[jid] = nombre
+  const claves = Object.keys(contactos)
+  if (claves.length > CONTACTOS_MAX) {
+    for (const k of claves.slice(0, claves.length - CONTACTOS_MAX)) delete contactos[k]
+  }
+  contactosSave()
+  return true
+}
+
+/** Nombre visible de un jid (o '' si no se conoce). */
+export function contactosGet(jid) {
+  return jid ? contactos[jid] || '' : ''
+}
+
+export function contactosSave() {
+  writeJsonAtomic(CONTACTOS_FILE, contactos)
+}

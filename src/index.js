@@ -182,10 +182,16 @@ function leerCuerpo(req) {
 
 /** Vista pública de un registro (sin el mensaje crudo de WhatsApp). */
 function publico(d) {
+  // Remitente legible: si quedó guardado como jid (historial/catch-up, a veces
+  // formato @lid sin pushName), se resuelve con el nombre del contacto.
+  const crudo = d.from || d.remoteJid || ''
+  const from = crudo.includes('@')
+    ? store.contactosGet(crudo) || store.contactosGet(d.remoteJid) || crudo
+    : crudo
   return {
     id: d.id,
     remoteJid: d.remoteJid,
-    from: d.from,
+    from,
     direction: d.direction || 'received', // 'sent' = enviado desde el teléfono vinculado
     filename: d.filename,
     mime: d.mime,
@@ -354,6 +360,7 @@ function main() {
   // (si no se carga aquí, tras un reinicio la lista aparece vacía).
   store.load()
   store.chatLoad()
+  store.contactosLoad()
   dbg('Arranque:', {
     host: config.host,
     port: config.port,

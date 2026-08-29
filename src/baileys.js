@@ -18,6 +18,7 @@ import makeWASocket, {
   downloadMediaMessage,
 } from '@whiskeysockets/baileys'
 import { dbg } from './diag.js'
+import { contactosGet, contactosSet } from './store.js'
 
 const DATA_DIR = path.resolve(process.env.WHATSAPP_DOC_RECEIVER_DATA_DIR || 'data')
 const BAIL_LOGFILE = path.join(DATA_DIR, 'baileys.log')
@@ -75,13 +76,16 @@ function extraerDocumento(msg) {
   const img = msg.message?.imageMessage
   const m = doc || img
   if (!m) return null
+  const jid = msg.key?.remoteJid || ''
   return {
     kind: img ? 'imagen' : 'documento',
     filename: doc ? String(m.fileName || '') : '',
     mime: m.mimetype || (img ? 'image/jpeg' : 'application/octet-stream'),
     size: Number(m.fileLength || 0),
     caption: String(m.caption || m.captions?.[0]?.caption || ''),
-    from: msg.pushName || msg.participant || msg.key.remoteJid || '',
+    // Apodo del mensaje → nombre guardado del contacto (historial trae @lid sin
+    // pushName) → participante → jid: así se muestra un nombre legible.
+    from: msg.pushName || contactosGet(jid) || msg.participant || jid,
   }
 }
 
@@ -138,6 +142,19 @@ async function conectar(handlers) {
   })
 
   sock.ev.on('creds.update', saveCreds)
+
+  // Nombres visibles de contactos (para mostrar remitente legible incluso en
+  // mensajes @lid del historial/catch-up, que no traen pushName).
+  const guardarContacto = (c) => {
+    if (!c || !c.id) return
+    const nombre = c.name || c.notify || c.verifiedName || ''
+    if (!nombre) return
+    contactosSet(c.id, nombre)
+    if (c.lid) contactosSet(c.lid, nombre)
+    if (c.jid) contactosSet(c.jid, nombre)
+  }
+  sock.ev.on('contacts.update', (lista) => { for (const c of lista) guardarContacto(c) })
+  sock.ev.on('contacts.upsert', (lista) => { for (const c of lista) guardarContacto(c) })
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update
@@ -251,6 +268,9 @@ async function conectar(handlers) {
       progress,
       isLatest,
     })
+    // El historial trae los nombres de los contactos: guardarlos antes de
+    // registrar los mensajes, para que el remitente salga legible.
+    for (const c of contacts || []) guardarContacto(c)
     if (Array.isArray(messages) && messages.length) despachar(messages, 'historial')
     else dbg('BAILEYS messaging-history.set sin mensajes (solo chats/contactos)')
   })

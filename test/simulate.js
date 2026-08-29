@@ -344,6 +344,23 @@ console.log('\n[16] Log de diagnóstico (botón "Logs" de la web)')
   ok(typeof r.data.file === 'string' && fs.existsSync(r.data.file), `archivo del log visible: ${r.data.file}`)
 }
 
+console.log('\n[17] Nombres de contacto (remitente legible en historial @lid)')
+{
+  store.contactosSet('5491155555555@s.whatsapp.net', 'Juan Pérez')
+  store.contactosSet('92535791870140@lid', 'Juan Pérez')
+  ok(store.contactosGet('92535791870140@lid') === 'Juan Pérez', 'contactosGet resuelve el @lid')
+  ok(store.contactosGet('inexistente@x') === '', 'contactosGet sin dato → ""')
+
+  // Registro viejo guardado con el jid: la API debe resolver el nombre.
+  store.update('TESTDOC-1', { from: '92535791870140@lid' })
+  const r = await api('/api/documents?limit=25&offset=0')
+  const d = r.data.documents.find((x) => x.id === 'TESTDOC-1')
+  ok(d.from === 'Juan Pérez', `publico resuelve el nombre del contacto: ${d.from}`)
+
+  store.contactosLoad() // reinicio simulado
+  ok(store.contactosGet('92535791870140@lid') === 'Juan Pérez', 'contactos persistidos tras reinicio')
+}
+
 server.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 console.log(`\n${fallos === 0 ? 'SIMULACIÓN OK — todas las comprobaciones pasaron' : `SIMULACIÓN CON ${fallos} FALLOS`}`)
