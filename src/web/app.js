@@ -109,6 +109,7 @@ function renderEstado(st) {
   $('#ultimo-mensaje').textContent = st.lastMessageAt
     ? `Último mensaje: ${fmtFecha(st.lastMessageAt)}`
     : '';
+  $('#version-app').textContent = st.version ? `v${st.version}` : '';
   $('#qr-panel').hidden = !st.requiresQr;
   if (st.requiresQr) cargarQr();
 }

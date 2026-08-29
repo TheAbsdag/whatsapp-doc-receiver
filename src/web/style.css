@@ -33,6 +33,8 @@ h1 { font-size: 1.15rem; margin: 0 0 4px; }
   color: #d1d5db;
 }
 
+.version { font-size: .75rem; color: #9ca3af; }
+
 main { max-width: 1000px; margin: 16px auto; padding: 0 12px; }
 
 .estado {

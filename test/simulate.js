@@ -198,6 +198,7 @@ console.log('\n[9] Estado, QR, impresoras (dropdown) y configuración')
   const s = (await api('/api/status'))
   ok(s.status === 200 && s.data.requiresQr === true && s.data.connected === false, `GET /api/status → ${JSON.stringify(s.data)}`)
   ok('lastMessageAt' in s.data, 'status incluye lastMessageAt')
+  ok(typeof s.data.version === 'string' && s.data.version.length > 0, `status incluye versión de la app (${s.data.version})`)
 }
 {
   const q = (await api('/api/qr'))

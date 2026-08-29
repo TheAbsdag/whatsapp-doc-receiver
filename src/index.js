@@ -29,6 +29,17 @@ const WEB_DIR = path.join(ROOT, 'src', 'web')
 const CONFIG_FILE = path.join(ROOT, 'config.json')
 const STATE_FILE = path.join(store.DATA_DIR, 'state.json')
 
+// Versión de la app (package.json): se expone en /api/status y en la web para
+// saber de un vistazo si el proceso que corre es el actual (si el botón Logs
+// da "No encontrado", el servicio sigue con el código viejo).
+const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || '0'
+  } catch {
+    return '0'
+  }
+})()
+
 const DEFAULT_CONFIG = {
   port: 8787,
   host: '127.0.0.1',
@@ -211,7 +222,7 @@ export function createApp({ config, api } = {}) {
 
       // --- API
       if (req.method === 'GET' && p === '/api/status') {
-        return json(res, 200, { ...iface.getStatus(), lastMessageAt })
+        return json(res, 200, { ...iface.getStatus(), lastMessageAt, version: VERSION })
       }
 
       if (req.method === 'GET' && p === '/api/qr') {
@@ -337,7 +348,7 @@ export function createApp({ config, api } = {}) {
 // ---------------------------------------------------------------------------
 
 function main() {
-  debugInit(`whatsapp-doc-receiver (proceso ${process.pid})`)
+  debugInit(`whatsapp-doc-receiver v${VERSION} (proceso ${process.pid})`)
   const config = loadConfig()
   // Recuperar el historial persistido: documentos y contexto de chats
   // (si no se carga aquí, tras un reinicio la lista aparece vacía).
