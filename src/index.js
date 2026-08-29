@@ -221,6 +221,45 @@ function publico(d) {
 }
 
 /**
+ * Elimina de disco los archivos de documentos descargados con antigüedad
+ * >= limiteMs (0 = todos). Sólo toca rutas DENTRO de downloadsDir. Los
+ * registros pasan a 'pending' (la lista conserva el historial). Devuelve
+ * { borrados, bytes }.
+ */
+export function limpiarDescargados(config, limiteMs = 0) {
+  const base = path.resolve(config.downloadsDir)
+  let borrados = 0
+  let bytes = 0
+  for (const d of store.listaDescargados(limiteMs)) {
+    const ruta = path.resolve(d.path)
+    if (ruta !== base && !ruta.startsWith(base + path.sep)) {
+      dbg('Limpieza: se omite ruta fuera de downloadsDir:', ruta)
+      continue
+    }
+    try {
+      bytes += fs.statSync(ruta).size
+      fs.rmSync(ruta, { force: true })
+      borrados++
+    } catch {
+      // archivo ya no existía: igual se deja el registro en pendiente
+    }
+    store.update(d.id, { status: 'pending', path: null })
+    dbg('Limpieza: eliminado', { id: d.id, filename: d.filename, ruta })
+  }
+  return { borrados, bytes }
+}
+
+/** Limpieza automática y silenciosa: solo archivos de más de 3 días. */
+function limpiarAutomatico(config) {
+  try {
+    const r = limpiarDescargados(config, 3 * 24 * 60 * 60 * 1000)
+    if (r.borrados) dbg('Limpieza automática (>3 días):', r)
+  } catch (e) {
+    dbg('ERROR limpieza automática:', e?.stack || String(e))
+  }
+}
+
+/**
  * Crea la app HTTP. `api` (inyectable para tests) debe exponer:
  *   getStatus(), getQrString(), downloadMedia(message)
  */
@@ -275,7 +314,7 @@ export function createApp({ config, api } = {}) {
       const mc = p.match(/^\/api\/chat\/([^/]+)\/messages$/)
       if (req.method === 'GET' && mc) {
         const jid = decodeURIComponent(mc[1])
-        const limit = Math.min(50, Math.max(1, parseInt(u.searchParams.get('limit') || '20', 10) || 20))
+        const limit = Math.min(50, Math.max(1, parseInt(u.searchParams.get('limit') || '10', 10) || 10))
         // Nombre legible del remitente (el participante en grupos; en 1:1 el
         // alias del contacto), para que las burbujas no muestren jids.
         const mensajes = store.chatMessages(jid, limit).map((m) => ({
@@ -287,6 +326,13 @@ export function createApp({ config, api } = {}) {
 
       if (req.method === 'GET' && p === '/api/debug-log') {
         return json(res, 200, { file: DEBUG_FILE, lines: leerUltimas(120) })
+      }
+
+      // Limpieza manual: elimina TODOS los archivos descargados (sin importar
+      // antigüedad); los registros quedan como "Pendiente".
+      if (req.method === 'POST' && p === '/api/limpiar') {
+        const r = limpiarDescargados(cfg, 0)
+        return json(res, 200, { ok: true, ...r })
       }
 
       if (req.method === 'GET' && p === '/api/printer') {
@@ -406,6 +452,11 @@ function main() {
     console.log(`whatsapp-doc-receiver escuchando en http://${config.host}:${config.port}`)
     console.log(`Descargas en: ${config.downloadsDir}`)
   })
+
+  // Limpieza automática y silenciosa: archivos descargados de más de 3 días.
+  // Corre al arrancar y cada 10 minutos (no interfiere con la UI).
+  limpiarAutomatico(config)
+  setInterval(() => limpiarAutomatico(config), 10 * 60 * 1000)
 
   baileys.start({
     onMessage: () => {

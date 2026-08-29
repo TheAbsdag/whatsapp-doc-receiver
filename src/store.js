@@ -10,8 +10,8 @@ export const DATA_DIR = path.resolve(process.env.WHATSAPP_DOC_RECEIVER_DATA_DIR 
 export const FILE = path.join(DATA_DIR, 'documents.json')
 const CHAT_FILE = path.join(DATA_DIR, 'chatlog.json')
 
-const CHAT_POR_JID = 20 // últimos mensajes que se conservan por chat
-const CHAT_MAX_TOTAL = 400 // tope global (20 chats con 20 mensajes, aprox.)
+const CHAT_POR_JID = 10 // últimos mensajes que se conservan por chat
+const CHAT_MAX_TOTAL = 400 // tope global (40 chats con 10 mensajes, aprox.)
 
 let docs = [] // más recientes primero
 let chat = {} // jid → [msg, ...] más reciente primero
@@ -167,4 +167,20 @@ export function contactosGet(jid) {
 
 export function contactosSave() {
   writeJsonAtomic(CONTACTOS_FILE, contactos)
+}
+
+// ---------------------------------------------------------------------------
+// Limpieza: documentos descargados cuya fecha (downloadedAt/receivedAt) es
+// más vieja que `limiteMs` (0 = todos los descargados). Sólo selecciona; el
+// borrado de archivos lo hace index.js (fs) con el guard de downloadsDir.
+// ---------------------------------------------------------------------------
+
+export function listaDescargados(limiteMs = 0) {
+  const ahora = Date.now()
+  return docs.filter((d) => {
+    if (d.status !== 'downloaded' || !d.path) return false
+    const ref = Date.parse(d.downloadedAt || d.receivedAt || '')
+    if (Number.isNaN(ref)) return false
+    return ahora - ref >= limiteMs
+  })
 }

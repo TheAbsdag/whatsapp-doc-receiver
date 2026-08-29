@@ -141,7 +141,8 @@ Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data
 Servicio arriba → documento recibido → tabla (25 por página) → **Vista previa** (opcional) → **Imprimir**. **Imprimir** descarga automáticamente si hace falta y manda a la cola de impresión **de a un documento por vez**: si tocás Imprimir en varios seguidos, todos se imprimen en orden (nada se salta). También se muestran los documentos **enviados** desde el teléfono vinculado (columna "Origen": Enviado / Recibido), con el botón para alternar **Nuevos primero / Antiguos primero** (la paginación sigue el orden elegido).
 
 - **Notificaciones no intrusivas**: al llegar un documento (o al perderse/restablecerse la conexión) hay un toast en la esquina y, con el permiso activado (botón **"Activar notificaciones"**), un aviso del navegador. **El programa nunca envía mensajes de WhatsApp.**
-- **Contexto del chat**: al tocar una fila se muestran los últimos 20 mensajes de ese chat (se guardan desde esta versión en `data/chatlog.json`); el documento tocado queda resaltado.
+- **Contexto del chat**: al tocar una fila se muestran los últimos **10 mensajes** de ese chat (o los que WhatsApp haya enviado, se guardan desde esta versión en `data/chatlog.json`); el documento tocado queda resaltado.
+- **Limpieza**: botón **"Limpiar"** (junto a Escanear QR y Logs) elimina TODOS los archivos descargados de la máquina (con confirmación; la lista los conserva como "Pendiente"). Además el servicio borra automáticamente y en silencio los archivos descargados de más de **3 días** (al arrancar y cada 10 min), y también se limpia con un clic. Esto no afecta el historial en `data/documents.json`.
 - **Historial**: todos los documentos registrados se guardan y **se recuperan tras reiniciar el equipo** (se cargan de `data/documents.json` al arrancar). Al reconectar, también se registran **los documentos recibidos mientras el equipo estuvo apagado o sin red** (catch-up). Al **vincular por primera vez**, además se aprovecha la **sincronización de historial** que WhatsApp envía desde el teléfono (si la envía: cubre chats recientes, sin garantías ni historial completo). No se pide el historial completo a propósito (evita consumir RAM en máquinas con poca memoria). Ver Solución de problemas.
 - **Impresora**: un **dropdown** con las impresoras detectadas por el sistema (`lpstat -a`); la primera opción, "(Por defecto — impresora del sistema)", equivale a `lp` sin `-d`; cualquier otra equivale a `lp -d <nombre>`. Si la detección falla (sin CUPS) se muestra el aviso y se puede guardar igualmente el nombre manualmente si se conoce.
 - Los archivos quedan en `~/WhatsAppDocs/` (configurable en `config.json`).
@@ -157,8 +158,9 @@ Servicio arriba → documento recibido → tabla (25 por página) → **Vista pr
 | `POST /api/documents/:id/download` | descarga la media a `~/WhatsAppDocs/` → `{ ok, fileName, path }` |
 | `GET /api/documents/:id/file` | sirve el archivo descargado (vista previa; solo desde `downloadsDir`) |
 | `POST /api/documents/:id/print` | ejecuta `lp` → `{ ok, message }` |
-| `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=20`) |
+| `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=10`) |
 | `GET /api/debug-log` | `{ file, lines }` — últimas líneas del log de diagnóstico (`data/receptor-debug.log`) |
+| `POST /api/limpiar` | elimina TODOS los archivos descargados (los registros pasan a "Pendiente") → `{ ok, borrados, bytes }` |
 | `GET/POST /api/printer` | leer/guardar el nombre de impresora |
 | `GET /api/printers` | `{ printers: [...], error? }` — impresoras del sistema (`lpstat -a`) |
 

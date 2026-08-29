@@ -337,7 +337,7 @@ async function abrirContexto(jid, docId) {
   const panel = $('#contexto-panel');
   const zona = $('#contexto-msgs');
   try {
-    const r = await api(`/api/chat/${encodeURIComponent(jid)}/messages?limit=20`);
+    const r = await api(`/api/chat/${encodeURIComponent(jid)}/messages?limit=10`);
     $('#contexto-titulo').textContent = `Contexto del chat · ${jid}`;
     zona.textContent = '';
     const msgs = r.messages || [];
@@ -454,6 +454,22 @@ async function principal() {
     }
   });
   $('#logs-cerrar').addEventListener('click', () => { $('#logs-panel').hidden = true; });
+
+  // Limpieza manual: borra TODOS los archivos descargados (con confirmación).
+  $('#btn-limpiar').addEventListener('click', async () => {
+    const okConf = window.confirm(
+      '¿Eliminar TODOS los archivos descargados de la máquina?\n\n' +
+      'La lista los conserva como "Pendiente" (solo se borran los archivos locales, de cualquier antigüedad).'
+    );
+    if (!okConf) return;
+    try {
+      const r = await api('/api/limpiar', { method: 'POST' });
+      setMensaje(`Limpieza: ${r.borrados} archivo(s) eliminado(s).`);
+      await refresh();
+    } catch (e) {
+      setMensaje('No se pudo limpiar: ' + e.message, true);
+    }
+  });
 
   $('#btn-actualizar').addEventListener('click', () => {
     refresh();

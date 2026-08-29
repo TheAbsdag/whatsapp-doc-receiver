@@ -277,14 +277,14 @@ console.log('\n[12] Contexto del chat (chatlog acotado, cronológico antiguo →
   store.chatAdd({ id: 'TESTDOC-1', remoteJid: jid, ts: new Date().toISOString(), kind: 'documento', text: 'doc de prueba', filename: 'Informe.pdf', mime: 'application/pdf' })
 
   let r = await api(`/api/chat/${jid}/messages?limit=20`)
-  ok(r.status === 200 && r.data.messages.length === 20, `GET /api/chat → ${r.data.messages.length} mensajes (límite 20)`)
-  // Con 25 mensajes + el documento, el recorte conserva los 20 más recientes:
-  // el más antiguo sobreviviente es CT-06 (CT-05 fue descartado al superar 20).
-  ok(r.data.messages[0].id === 'CT-06' && r.data.messages[19].id === 'TESTDOC-1',
-    `orden cronológico antiguo → reciente: ${r.data.messages[0].id} … ${r.data.messages[19].id} (recorte a 20)`)
-  ok(r.data.messages[0].kind === 'documento' && r.data.messages[1].kind === 'texto', 'kinds preservados (documento/texto)')
+  ok(r.status === 200 && r.data.messages.length === 10, `GET /api/chat → ${r.data.messages.length} mensajes (recorte a 10 por chat)`)
+  // Con 25 mensajes + el documento, el recorte conserva los 10 más recientes:
+  // el más antiguo sobreviviente es CT-16 (CT-06…CT-15 fueron descartados).
+  ok(r.data.messages[0].id === 'CT-16' && r.data.messages[9].id === 'TESTDOC-1',
+    `orden cronológico antiguo → reciente: ${r.data.messages[0].id} … ${r.data.messages[9].id} (recorte a 10)`)
+  ok(r.data.messages[0].kind === 'texto' && r.data.messages[9].kind === 'documento', 'kinds preservados (texto/documento)')
   r = await api(`/api/chat/${jid}/messages`)
-  ok(r.status === 200 && r.data.messages.length === 20, 'límite por defecto 20 sin parámetro')
+  ok(r.status === 200 && r.data.messages.length === 10, 'límite por defecto 10 sin parámetro')
   r = await api('/api/chat/NOEXISTE-999/messages')
   ok(r.status === 200 && r.data.messages.length === 0, 'chat sin mensajes → lista vacía (200)')
 }
@@ -382,6 +382,26 @@ console.log('\n[18] Filtro por tipo (solo PDF / imágenes / otros) y alias de ch
   ok(rctx.data.messages.some((m) => m.id === 'CT-ALIAS-1'), 'API de contexto resuelve el alias @lid')
   const conNombre = rctx.data.messages.find((m) => m.id === 'CT-ALIAS-1')
   ok(conNombre.from === 'Juan Pérez', `contexto con nombre legible: ${conNombre.from}`)
+}
+
+console.log('\n[19] Limpieza de archivos descargados (manual = todos; automática = >3 días)')
+{
+  const hace4d = new Date(Date.now() - 4 * 86400_000).toISOString()
+  const pdfViejo = path.join(DIROUT, 'Informe.pdf')
+  const pdfNuevo = path.join(DIROUT, 'Informe (1).pdf')
+  store.update('TESTDOC-1', { status: 'downloaded', path: pdfViejo, downloadedAt: hace4d })
+  store.update('TESTDOC-2', { status: 'downloaded', path: pdfNuevo, downloadedAt: new Date().toISOString() })
+
+  const { limpiarDescargados } = await import('../src/index.js')
+  const auto = limpiarDescargados(cfg, 3 * 86400_000) // automática: > 3 días
+  ok(auto.borrados === 1 && !fs.existsSync(pdfViejo), `automática (>3 días) borra solo el viejo: ${auto.borrados}`)
+  ok(store.get('TESTDOC-1').status === 'pending' && !store.get('TESTDOC-1').path, 'registro viejo vuelve a Pendiente')
+  ok(fs.existsSync(pdfNuevo) && store.get('TESTDOC-2').status === 'downloaded', 'el descargado reciente se conserva')
+
+  const r = await api('/api/limpiar', { method: 'POST' })
+  // descargados al momento: TESTDOC-2 (reciente) + TESTDOC-3 (descargado en [6])
+  ok(r.status === 200 && r.data.borrados === 2 && !fs.existsSync(pdfNuevo), `manual borra TODOS los descargados: ${r.data.borrados}`)
+  ok(store.get('TESTDOC-2').status === 'pending' && store.get('TESTDOC-3').status === 'pending', 'los recientes también vuelven a Pendiente')
 }
 
 server.close()
