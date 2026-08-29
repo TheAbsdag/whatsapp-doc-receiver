@@ -180,6 +180,24 @@ function leerCuerpo(req) {
   })
 }
 
+/** Nombre legible de un jid ('' si no es necesario). */
+function nombreLegible(jid) {
+  if (!jid) return ''
+  return jid.includes('@') ? store.contactosGet(jid) || jid : jid
+}
+
+/** ¿El documento coincide con el filtro de tipo? (todos | pdf | imagen | otros) */
+function coincideTipo(d, tipo) {
+  const mime = String(d.mime || '')
+  const ext = String(d.filename || '').toLowerCase().split('.').pop()
+  const esPdf = mime === 'application/pdf' || ext === 'pdf'
+  const esImagen = mime.startsWith('image/')
+  if (tipo === 'pdf') return esPdf
+  if (tipo === 'imagen') return esImagen
+  if (tipo === 'otros') return !esPdf && !esImagen
+  return true
+}
+
 /** Vista pública de un registro (sin el mensaje crudo de WhatsApp). */
 function publico(d) {
   // Remitente legible: si quedó guardado como jid (historial/catch-up, a veces
@@ -242,7 +260,9 @@ export function createApp({ config, api } = {}) {
         const q = u.searchParams
         const limit = Math.min(200, Math.max(1, parseInt(q.get('limit') || '25', 10) || 25))
         const offset = Math.max(0, parseInt(q.get('offset') || '0', 10) || 0)
-        const todos = store.list()
+        const tipo = q.get('tipo') || 'todos' // todos | pdf | imagen | otros
+        let todos = store.list()
+        if (tipo !== 'todos') todos = todos.filter((d) => coincideTipo(d, tipo))
         const base = q.get('order') === 'asc' ? [...todos].reverse() : todos
         return json(res, 200, {
           documents: base.slice(offset, offset + limit).map(publico),
@@ -256,7 +276,13 @@ export function createApp({ config, api } = {}) {
       if (req.method === 'GET' && mc) {
         const jid = decodeURIComponent(mc[1])
         const limit = Math.min(50, Math.max(1, parseInt(u.searchParams.get('limit') || '20', 10) || 20))
-        return json(res, 200, { chat: jid, messages: store.chatMessages(jid, limit) })
+        // Nombre legible del remitente (el participante en grupos; en 1:1 el
+        // alias del contacto), para que las burbujas no muestren jids.
+        const mensajes = store.chatMessages(jid, limit).map((m) => ({
+          ...m,
+          from: m.fromMe ? '' : nombreLegible(m.participant || m.remoteJid),
+        }))
+        return json(res, 200, { chat: jid, messages: mensajes })
       }
 
       if (req.method === 'GET' && p === '/api/debug-log') {
@@ -390,6 +416,7 @@ function main() {
       store.chatAdd({
         id: _msg.key.id,
         remoteJid: info.remoteJid,
+        participant: info.participant || '',
         fromMe: info.fromMe,
         ts: info.ts,
         kind: info.kind,

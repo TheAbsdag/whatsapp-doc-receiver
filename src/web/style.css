@@ -86,6 +86,7 @@ main { max-width: 1240px; margin: 16px auto; padding: 0 12px; }
 }
 .barra input { width: 100%; }
 #impresoras-aviso { font-size: .8rem; color: #b45309; flex-basis: 100%; }
+#filtro-tipo { flex: 0 0 auto; min-width: 130px; }
 
 button {
   padding: 6px 12px;

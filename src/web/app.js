@@ -261,10 +261,11 @@ async function refresh() {
   if (refrescando) return;
   refrescando = true;
   try {
+    const tipo = $('#filtro-tipo')?.value || 'todos';
     const [st, data, nuevos] = await Promise.all([
       api('/api/status'),
-      api(`/api/documents?limit=${PAGE}&offset=${pagina * PAGE}${ordenAsc ? '&order=asc' : ''}`),
-      api('/api/documents?limit=1&offset=0'), // el más reciente, siempre (para avisar)
+      api(`/api/documents?limit=${PAGE}&offset=${pagina * PAGE}${ordenAsc ? '&order=asc' : ''}&tipo=${encodeURIComponent(tipo)}`),
+      api(`/api/documents?limit=1&offset=0&tipo=${encodeURIComponent(tipo)}`), // el más reciente del filtro, para avisar
     ]);
     renderEstado(st);
     docsTotal = data.total ?? 0;
@@ -352,7 +353,9 @@ async function abrirContexto(jid, docId) {
           : m.kind === 'documento' ? `📄 ${m.filename || 'documento'}${m.text ? ` — ${m.text}` : ''}`
           : m.kind === 'imagen' ? `🖼️ ${m.text || 'imagen'}${m.filename ? ` (${m.filename})` : ''}`
           : m.kind;
-        div.textContent = `${fmtHora(m.ts)} · ${m.fromMe ? 'Yo' : m.remoteJid}\n${cuerpo}`;
+        // m.from viene con el nombre/apodo del remitente (resuelto en el servidor)
+        const remitente = m.fromMe ? 'Yo' : (m.from || m.remoteJid || '');
+        div.textContent = `${fmtHora(m.ts)} · ${remitente}\n${cuerpo}`;
         zona.appendChild(div);
       }
     }
@@ -461,6 +464,11 @@ async function principal() {
     ordenAsc = !ordenAsc;
     pagina = 0;
     $('#btn-orden').textContent = ordenAsc ? 'Nuevos primero' : 'Antiguos primero';
+    refresh();
+  });
+
+  $('#filtro-tipo').addEventListener('change', () => {
+    pagina = 0;
     refresh();
   });
 

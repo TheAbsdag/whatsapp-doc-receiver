@@ -226,6 +226,7 @@ async function conectar(handlers) {
           const ch = extraerChat(msg)
           handlers.onChatMessage(msg, {
             remoteJid: jid,
+            participant: msg.key?.participant || '',
             fromMe: !!msg.key.fromMe,
             ts: new Date(ts).toISOString(),
             ...ch,

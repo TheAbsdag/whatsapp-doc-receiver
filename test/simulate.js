@@ -41,13 +41,13 @@ function ok(cond, msg) {
 // PDF mínimo (el contenido no se valida: solo se guarda y se imprime la ruta)
 const PDF = Buffer.from('%PDF-1.4\n% WDR-test\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n2 0 obj <</Type/Pages/Kids[3 0 R]/Count 1>> endobj\n3 0 obj <</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]>> endobj\n%%EOF\n')
 
-function registro(id, filename, size = 12345, ts = new Date().toISOString(), fromMe = false) {
+function registro(id, filename, size = 12345, ts = new Date().toISOString(), fromMe = false, mime = 'application/pdf') {
   return {
     id,
     remoteJid: '5491155555555@s.whatsapp.net',
     from: 'Probador',
     filename,
-    mime: 'application/pdf',
+    mime,
     size,
     caption: 'documento de prueba',
     receivedAt: ts,
@@ -58,7 +58,7 @@ function registro(id, filename, size = 12345, ts = new Date().toISOString(), fro
       key: { id, remoteJid: '5491155555555@s.whatsapp.net', fromMe },
       pushName: fromMe ? '' : 'Probador',
       messageTimestamp: Math.floor(new Date(ts).getTime() / 1000),
-      message: { documentMessage: { fileName: filename, mimetype: 'application/pdf', fileLength: size } },
+      message: { documentMessage: { fileName: filename, mimetype: mime, fileLength: size } },
     },
   }
 }
@@ -359,6 +359,29 @@ console.log('\n[17] Nombres de contacto (remitente legible en historial @lid)')
 
   store.contactosLoad() // reinicio simulado
   ok(store.contactosGet('92535791870140@lid') === 'Juan Pérez', 'contactos persistidos tras reinicio')
+}
+
+console.log('\n[18] Filtro por tipo (solo PDF / imágenes / otros) y alias de chat @lid')
+{
+  store.add(registro('TESTDOC-IMG', 'foto.jpg', 999, '2024-07-01T10:00:00Z', false, 'image/jpeg'))
+  let r = await api('/api/documents?limit=25&offset=0&tipo=pdf')
+  ok(r.data.total === 5 && r.data.documents.every((d) => d.filename.toLowerCase().endsWith('.pdf') || d.mime === 'application/pdf'),
+    `tipo=pdf → ${r.data.total} documentos, todos PDF`)
+  r = await api('/api/documents?limit=25&offset=0&tipo=imagen')
+  ok(r.data.total === 1 && r.data.documents[0].id === 'TESTDOC-IMG', 'tipo=imagen → solo la imagen')
+  r = await api('/api/documents?limit=25&offset=0&tipo=otros')
+  ok(r.data.total === 0, 'tipo=otros → ninguno (todo es PDF o imagen)')
+
+  // Alias de chat: mensajes guardados bajo el jid de teléfono, consultados por @lid
+  store.contactosSet('5491155555555@s.whatsapp.net', 'Juan Pérez')
+  store.contactosSet('92535791870140@lid', 'Juan Pérez')
+  store.chatAdd({ id: 'CT-ALIAS-1', remoteJid: '5491155555555@s.whatsapp.net', participant: '5491155555555@s.whatsapp.net', ts: new Date().toISOString(), kind: 'texto', text: 'mensaje guardado bajo teléfono' })
+  const alias = store.chatMessages('92535791870140@lid', 5)
+  ok(alias.some((m) => m.id === 'CT-ALIAS-1'), 'chatMessages por @lid encuentra los mensajes guardados bajo el teléfono')
+  const rctx = await api(`/api/chat/92535791870140@lid/messages?limit=5`)
+  ok(rctx.data.messages.some((m) => m.id === 'CT-ALIAS-1'), 'API de contexto resuelve el alias @lid')
+  const conNombre = rctx.data.messages.find((m) => m.id === 'CT-ALIAS-1')
+  ok(conNombre.from === 'Juan Pérez', `contexto con nombre legible: ${conNombre.from}`)
 }
 
 server.close()

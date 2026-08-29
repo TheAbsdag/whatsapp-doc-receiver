@@ -73,11 +73,11 @@ export function chatLoad() {
  * sumo CHAT_POR_JID mensajes y el log global CHAT_MAX_TOTAL (se descartan los
  * más antiguos de los chats con menos actividad).
  */
-export function chatAdd({ id, remoteJid, fromMe = false, ts, kind = 'otro', text = '', filename = '', mime = '' }) {
+export function chatAdd({ id, remoteJid, participant = '', fromMe = false, ts, kind = 'otro', text = '', filename = '', mime = '' }) {
   const jid = remoteJid || 'desconocido'
   const lista = chat[jid] || (chat[jid] = [])
   if (lista.some((m) => m.id === id)) return
-  lista.unshift({ id, remoteJid: jid, fromMe, ts, kind, text, filename, mime })
+  lista.unshift({ id, remoteJid: jid, participant, fromMe, ts, kind, text, filename, mime })
   if (lista.length > CHAT_POR_JID) lista.length = CHAT_POR_JID
 
   let total = Object.values(chat).reduce((n, l) => n + l.length, 0)
@@ -93,10 +93,31 @@ export function chatAdd({ id, remoteJid, fromMe = false, ts, kind = 'otro', text
   chatSave()
 }
 
-/** Últimos `limit` mensajes de un chat, en orden cronológico (antiguo → reciente). */
+/**
+ * Últimos `limit` mensajes de un chat, en orden cronológico (antiguo → reciente).
+ * WhatsApp usa dos formas para el mismo chat (teléfono @s.whatsapp.net y @lid):
+ * si la forma pedida no tiene mensajes, se buscan los ALIAS (claves del mapa de
+ * contactos con el mismo nombre visible).
+ */
 export function chatMessages(jid, limit = 20) {
-  const lista = chat[jid] || []
+  let lista = chat[jid] || []
+  for (const a of aliasDe(jid)) {
+    if (lista.length) break
+    lista = chat[a] || []
+  }
   return [...lista.slice(0, limit)].reverse()
+}
+
+/** Otras claves del mapa de contactos que corresponden al mismo contacto. */
+export function aliasDe(jid) {
+  const alias = []
+  if (!jid) return alias
+  const nombre = contactos[jid]
+  if (!nombre) return alias
+  for (const [k, v] of Object.entries(contactos)) {
+    if (k !== jid && v === nombre) alias.push(k)
+  }
+  return alias
 }
 
 /** Número total de mensajes de contexto guardados. */
