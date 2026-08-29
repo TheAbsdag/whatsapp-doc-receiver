@@ -109,7 +109,10 @@ function renderEstado(st) {
   $('#ultimo-mensaje').textContent = st.lastMessageAt
     ? `Último mensaje: ${fmtFecha(st.lastMessageAt)}`
     : '';
-  $('#version-app').textContent = st.version ? `v${st.version}` : '';
+  // Tolerante: #version-app existe en index.html actual; si falta (copia de
+  // archivos incompleta) no debe romper la UI.
+  const ver = $('#version-app');
+  if (ver) ver.textContent = st.version ? `v${st.version}` : '';
   $('#qr-panel').hidden = !st.requiresQr;
   if (st.requiresQr) cargarQr();
 }
