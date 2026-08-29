@@ -102,9 +102,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .tabla-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; background: #fff; font-size: .9rem; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+/* Nombres largos (p. ej. "direccionamiento_2026-08-28T...pdf"): se parten en
+   vez de empujar la tabla fuera de pantalla */
+#filas td { overflow-wrap: anywhere; word-break: break-word; }
 th { background: #f3f4f6; }
 tbody tr:nth-child(even) { background: #fafafa; }
-td button + button { margin-left: 6px; }
+/* Acciones: los botones se acomodan en varias filas si la columna es angosta */
+.acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+.acciones button { white-space: nowrap; }
 .vacio { text-align: center; color: #6b7280; padding: 18px; }
 
 .mensaje { min-height: 1.2em; font-size: .9rem; }
@@ -162,8 +167,9 @@ td button + button { margin-left: 6px; }
   position: sticky;   /* queda visible mientras se recorre la lista */
   top: 8px;
 }
-/* Pantallas angostas: el contexto baja debajo de la lista */
-@media (max-width: 900px) {
+/* Pantallas medianas y angostas: el contexto baja debajo de la lista (para
+   pantallas "cuadradas" la columna lateral quita demasiado espacio a la tabla) */
+@media (max-width: 1199px) {
   .zona-doble { flex-direction: column; }
   #contexto-panel {
     flex-basis: auto;
@@ -289,7 +295,7 @@ td button + button { margin-left: 6px; }
     min-height: 48px;
     min-width: 48px;
   }
-  td button + button { margin-left: 12px; }
+  .acciones { gap: 10px; }
 
   table { font-size: 1rem; }
   th, td { padding: 12px 10px; }
@@ -302,4 +308,22 @@ td button + button { margin-left: 6px; }
   #impresoras-aviso { font-size: .9rem; }
   #qr-img { width: 320px; height: 320px; }
   .mensaje { font-size: 1rem; }
+}
+
+/* ==========================================================================
+   Pantallas medianas/cuadradas (≤1100 px): tabla compacta.
+   Se oculta la columna "Tamaño" y se reduce texto/padding para que las
+   columnas visibles quepan sin scroll horizontal (va después del bloque
+   táctil para ganarle en conflicto).
+   ========================================================================== */
+@media (max-width: 1100px) {
+  th:nth-child(5), td:nth-child(5) { display: none; } /* Tamaño */
+
+  table { font-size: .84rem; }
+  th, td { padding: 7px 8px; }
+  .cabe-info { font-size: .8rem; }
+}
+/* En táctil angosto, texto un poco mayor que el mínimo de la regla anterior */
+@media (pointer: coarse) and (max-width: 1100px) {
+  table { font-size: .95rem; }
 }

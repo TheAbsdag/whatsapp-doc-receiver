@@ -193,6 +193,7 @@ function crearFila(doc) {
 
   // Acciones: vista previa · descargar · imprimir (imprimir descarga automáticamente)
   const tdAcciones = document.createElement('td');
+  tdAcciones.className = 'acciones';
   for (const [action, titulo] of [['preview', 'Vista previa'], ['download', 'Descargar'], ['print', 'Imprimir']]) {
     const btn = document.createElement('button');
     btn.type = 'button';
