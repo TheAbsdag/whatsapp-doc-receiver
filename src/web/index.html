@@ -41,36 +41,40 @@
 
     <div id="toast" hidden></div>
 
-    <div class="tabla-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha y hora</th>
-            <th>Origen</th>
-            <th>Remitente</th>
-            <th>Nombre de archivo</th>
-            <th>Tamaño</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="filas"></tbody>
-      </table>
-    </div>
+    <div class="zona-doble">
+      <div class="col-lista">
+        <div class="tabla-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Origen</th>
+                <th>Remitente</th>
+                <th>Nombre de archivo</th>
+                <th>Tamaño</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="filas"></tbody>
+          </table>
+        </div>
 
-    <div class="paginador">
-      <button id="btn-prev" type="button">‹ Anterior</button>
-      <span id="pagina-info"></span>
-      <button id="btn-next" type="button">Siguiente ›</button>
-    </div>
-
-    <section id="contexto-panel" hidden>
-      <div class="panel-cab">
-        <span id="contexto-titulo"></span>
-        <button id="contexto-cerrar" type="button">✕</button>
+        <div class="paginador">
+          <button id="btn-prev" type="button">‹ Anterior</button>
+          <span id="pagina-info"></span>
+          <button id="btn-next" type="button">Siguiente ›</button>
+        </div>
       </div>
-      <div id="contexto-msgs"></div>
-    </section>
+
+      <section id="contexto-panel" hidden>
+        <div class="panel-cab">
+          <span id="contexto-titulo"></span>
+          <button id="contexto-cerrar" type="button">✕</button>
+        </div>
+        <div id="contexto-msgs"></div>
+      </section>
+    </div>
 
     <div id="preview-panel" hidden>
       <div class="panel-cab">
