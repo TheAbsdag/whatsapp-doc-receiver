@@ -1,5 +1,8 @@
 // Registro persistente de documentos recibidos: data/documents.json
 // Log de contexto por chat: data/chatlog.json (últimos mensajes por chat).
+// Cada documento conserva ademas su ventana de contexto (4 mensajes antes +
+// hasta 4 despues) para que el panel muestre el entorno del archivo, no solo
+// el final del chat.
 // Escritura atómica (files.writeJsonAtomic) — nada de bases de datos.
 // El directorio de datos puede sobreescribirse con la variable de entorno
 // WHATSAPP_DOC_RECEIVER_DATA_DIR (útil para tests y data dirs alternativos).
@@ -127,6 +130,84 @@ export function chatCount() {
 
 export function chatSave() {
   writeJsonAtomic(CHAT_FILE, chat)
+}
+
+// ---------------------------------------------------------------------------
+// Ventana de contexto por documento: 4 mensajes ANTES + hasta 4 DESPUÉS
+// ---------------------------------------------------------------------------
+
+const CONTEXTO_ANTES = 4
+const CONTEXTO_DESPUES = 4
+
+/**
+ * Vista completa del chat: mensajes guardados bajo TODAS las claves del mismo
+ * contacto (teléfono + @lid + alias), deduplicados por id y ordenados por
+ * fecha. Últimos `max`. A diferencia de chatMessages (que solo mira una
+ * clave), esto une las formas que WhatsApp usa para el mismo chat.
+ */
+export function chatVentana(jid, max = 50) {
+  const claves = new Set([jid, ...aliasDe(jid)])
+  const vistos = new Set()
+  const todos = []
+  for (const k of claves) {
+    for (const m of chat[k] || []) {
+      if (vistos.has(m.id)) continue
+      vistos.add(m.id)
+      todos.push(m)
+    }
+  }
+  todos.sort((a, b) => String(a.ts || '').localeCompare(String(b.ts || '')))
+  return todos.slice(-max)
+}
+
+/**
+ * Snapshot de los hasta CONTEXTO_ANTES mensajes que preceden al documento
+ * `idDoc`. Se llama al registrar el documento: el log ya contiene el propio
+ * mensaje del documento (lo agrega chatAdd justo antes), así que se saca de
+ * la ventana. El documento siempre termina con contexto guardado (aunque
+ * vacío), para que los mensajes posteriores tengan dónde sumarse.
+ */
+export function contextoInicial(jid, idDoc) {
+  const ventana = chatVentana(jid, CONTEXTO_ANTES + 5)
+  const i = ventana.findIndex((m) => m.id === idDoc)
+  if (i >= 0) return ventana.slice(Math.max(0, i - CONTEXTO_ANTES), i)
+  return ventana.slice(-CONTEXTO_ANTES)
+}
+
+/**
+ * Un mensaje recién llegado se suma como "después" (tope CONTEXTO_DESPUES)
+ * a los documentos del mismo chat que ya tienen contexto: mensajes con fecha
+ * posterior al documento, sin repetir id ni contarse a sí mismos (la vía
+ * repetida historial/catch-up re-despacha). Devuelve cuántos se actualizaron.
+ */
+export function contextoDespuesAgregar(jid, msg) {
+  let actualizados = 0
+  for (const d of docs) {
+    if (!d.contexto || !Array.isArray(d.contexto.despues)) continue
+    const despues = d.contexto.despues
+    if (despues.length >= CONTEXTO_DESPUES) continue
+    if (msg.id && (msg.id === d.id || despues.some((m) => m.id === msg.id))) continue
+    // Solo mensajes con fecha igual o posterior al documento (los previos
+    // tienen la misma cifra de segundos y llegan antes por despacho).
+    if (msg.ts && d.receivedAt && String(msg.ts) < String(d.receivedAt)) continue
+    if (!mismoChat(jid, d.remoteJid)) continue
+    despues.push({ ...msg })
+    actualizados++
+  }
+  if (actualizados) save()
+  return actualizados
+}
+
+/** ¿Dos jids corresponden al mismo chat? (formas teléfono/@lid del mismo contacto) */
+export function mismoChat(a, b) {
+  if (!a || !b) return false
+  if (a === b) return true
+  const aliasB = aliasDe(b)
+  if (aliasB.includes(a)) return true
+  for (const x of aliasDe(a)) {
+    if (x === b || aliasB.includes(x)) return true
+  }
+  return false
 }
 
 // ---------------------------------------------------------------------------

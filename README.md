@@ -10,7 +10,7 @@ Receptor **headless** de documentos de WhatsApp para una máquina **Fedora Linux
 2. Cuando llega un **documento o imagen**, lo registra en `data/documents.json` (escritura atómica) y avisa con una **notificación no intrusiva** (aviso del navegador + toast, **sin enviar ningún mensaje**).
 3. La web (`http://127.0.0.1:8787`) muestra la tabla paginada (**25 elementos por página**): **Fecha y hora · Origen · Remitente · Nombre de archivo · Tamaño · Estado · Acciones**.
 4. **Vista previa** abre el PDF/imagen en la misma página (modal) antes de imprimir; **Descargar** guarda el archivo en `~/WhatsAppDocs/` (nombre saneado, sin colisiones) y **Imprimir** descarga (si hace falta) y manda a la impresora **de a un documento por vez** — los clics nunca se pierden ni se "saltan" documentos.
-5. Al tocar una fila se muestra el **contexto del chat** (últimos 20 mensajes) en solo lectura. Refresco automático cada 5 segundos.
+5. Al tocar una fila se muestra el **contexto del documento** en solo lectura: **hasta 4 mensajes anteriores y hasta 4 posteriores** al archivo (según lo que haya llegado). Refresco automático cada 5 segundos.
 
 ## Requisitos
 
@@ -141,7 +141,7 @@ Los `.tgz` respetan `.gitignore` (`npm pack`): no llevan `node_modules` ni `data
 Servicio arriba → documento recibido → tabla (25 por página) → **Vista previa** (opcional) → **Imprimir**. **Imprimir** descarga automáticamente si hace falta y manda a la cola de impresión **de a un documento por vez**: si tocás Imprimir en varios seguidos, todos se imprimen en orden (nada se salta). También se muestran los documentos **enviados** desde el teléfono vinculado (columna "Origen": Enviado / Recibido), con el botón para alternar **Nuevos primero / Antiguos primero** (la paginación sigue el orden elegido).
 
 - **Notificaciones no intrusivas**: al llegar un documento (o al perderse/restablecerse la conexión) hay un toast en la esquina y, con el permiso activado (botón **"Activar notificaciones"**), un aviso del navegador. **El programa nunca envía mensajes de WhatsApp.**
-- **Contexto del chat**: al tocar una fila se muestran los últimos **10 mensajes** de ese chat (o los que WhatsApp haya enviado, se guardan desde esta versión en `data/chatlog.json`); el documento tocado queda resaltado.
+- **Contexto del documento**: al tocar una fila se muestra la **ventana alrededor del documento**: hasta **4 mensajes anteriores** y hasta **4 posteriores** (los que hayan llegado; si no hay, muestra los que existan). La ventana se **guarda por documento** en `data/documents.json` al registrarse (los mensajes posteriores se suman a medida que llegan); para documentos recibidos antes de esta versión se reconstruye con mejor esfuerzo desde `data/chatlog.json`.
 - **Limpieza**: botón **"Limpiar"** (junto a Escanear QR y Logs) elimina TODOS los archivos descargados de la máquina (con confirmación; la lista los conserva como "Pendiente"). Además el servicio borra automáticamente y en silencio los archivos descargados de más de **3 días** (al arrancar y cada 10 min), y también se limpia con un clic. Esto no afecta el historial en `data/documents.json`.
 - **Historial**: todos los documentos registrados se guardan y **se recuperan tras reiniciar el equipo** (se cargan de `data/documents.json` al arrancar). Al reconectar, también se registran **los documentos recibidos mientras el equipo estuvo apagado o sin red** (catch-up). Al **vincular por primera vez**, además se aprovecha la **sincronización de historial** que WhatsApp envía desde el teléfono (si la envía: cubre chats recientes, sin garantías ni historial completo). No se pide el historial completo a propósito (evita consumir RAM en máquinas con poca memoria). Ver Solución de problemas.
 - **Impresora**: un **dropdown** con las impresoras detectadas por el sistema (`lpstat -a`); la primera opción, "(Por defecto — impresora del sistema)", equivale a `lp` sin `-d`; cualquier otra equivale a `lp -d <nombre>`. Si la detección falla (sin CUPS) se muestra el aviso y se puede guardar igualmente el nombre manualmente si se conoce.
@@ -158,7 +158,8 @@ Servicio arriba → documento recibido → tabla (25 por página) → **Vista pr
 | `POST /api/documents/:id/download` | descarga la media a `~/WhatsAppDocs/` → `{ ok, fileName, path }` |
 | `GET /api/documents/:id/file` | sirve el archivo descargado (vista previa; solo desde `downloadsDir`) |
 | `POST /api/documents/:id/print` | ejecuta `lp` → `{ ok, message }` |
-| `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=10`) |
+| `GET /api/documents/:id/contexto` | ventana del documento: `{ before, after, filename, ... }` — hasta 4 mensajes antes y hasta 4 después |
+| `GET /api/chat/:jid/messages` | `{ chat, messages }` — últimos mensajes del chat (`?limit=10`, útil para depuración) |
 | `GET /api/debug-log` | `{ file, lines }` — últimas líneas del log de diagnóstico (`data/receptor-debug.log`) |
 | `POST /api/limpiar` | elimina TODOS los archivos descargados (los registros pasan a "Pendiente") → `{ ok, borrados, bytes }` |
 | `GET/POST /api/printer` | leer/guardar el nombre de impresora |
@@ -214,7 +215,8 @@ El entorno de desarrollo no tiene WhatsApp real, CUPS ni systemd, así que la si
 - la página carga y `GET /api/documents` devuelve los registros;
 - **descarga** de media simulada → archivo guardado con nombre final correcto y registro `downloaded`;
 - **impresión** con un `lp` simulado (verifica argumentos `-d impresora -- archivo`), y el fallo de CUPS se reporta en `message`;
-- **paginación** (`limit`/`offset`/`total`, `order=asc`), **contexto de chat** (`/api/chat/:jid/messages`, recorte a 20), **vista previa** (`/api/documents/:id/file`: 200/409/403, contenido correcto) y **recuperación del historial tras un reinicio simulado** (store recargado de disco);
+- **paginación** (`limit`/`offset`/`total`, `order=asc`), **contexto de chat** (`/api/chat/:jid/messages`, recorte a 10), **vista previa** (`/api/documents/:id/file`: 200/409/403, contenido correcto) y **recuperación del historial tras un reinicio simulado** (store recargado de disco);
+- **ventana por documento**: 4 mensajes antes + hasta 4 después (tope), mensajes entre archivos que cuentan para ambos, alias teléfono ↔ `@lid`, nombres legibles y reconstrucción desde el chatlog para documentos viejos;
 - errores: `404` id inexistente, `409` imprimir sin descargar; QR PNG base64; persistencia atómica sin `.tmp` residuales.
 
 ```bash

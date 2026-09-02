@@ -384,7 +384,83 @@ console.log('\n[18] Filtro por tipo (solo PDF / imágenes / otros) y alias de ch
   ok(conNombre.from === 'Juan Pérez', `contexto con nombre legible: ${conNombre.from}`)
 }
 
-console.log('\n[19] Limpieza de archivos descargados (manual = todos; automática = >3 días)')
+console.log('\n[19] Contexto por documento: 4 antes + hasta 4 después')
+{
+  const jid = '5491155555555@s.whatsapp.net'
+  const t0 = Date.UTC(2024, 8, 1, 12, 0, 0)
+
+  // Flujo real: los mensajes previos llegan al chatlog, luego el documento
+  // (su propio mensaje se registra primero) y ahí se captura el "antes".
+  for (let i = 1; i <= 6; i++) {
+    store.chatAdd({
+      id: `PRE-${i}`, remoteJid: jid, fromMe: i % 2 === 0,
+      ts: new Date(t0 + i * 60000).toISOString(),
+      kind: 'texto', text: `previo ${i}`,
+    })
+  }
+  store.chatAdd({ id: 'CTX-1', remoteJid: jid, ts: new Date(t0 + 7 * 60000).toISOString(), kind: 'documento', text: 'doc con contexto', filename: 'Contexto.pdf', mime: 'application/pdf' })
+  store.add(registro('CTX-1', 'Contexto.pdf', 111, new Date(t0 + 7 * 60000).toISOString()))
+  const antes = store.contextoInicial(jid, 'CTX-1')
+  ok(JSON.stringify(antes.map((m) => m.id)) === JSON.stringify(['PRE-3', 'PRE-4', 'PRE-5', 'PRE-6']),
+    `4 mensajes ANTES del documento: ${antes.map((m) => m.id).join(', ')}`)
+  store.update('CTX-1', { contexto: { antes, despues: [] } })
+
+  const post = (i) => ({
+    id: `POST-${i}`, remoteJid: jid, fromMe: false,
+    // POST-1..3 llegan ENTRE CTX-1 (+7) y CTX-2 (+15); POST-4..6 DESPUÉS de CTX-2.
+    ts: new Date(t0 + (i <= 3 ? 7 + i : 12 + i) * 60000).toISOString(),
+    kind: 'texto', text: `posterior ${i}`,
+  })
+  for (let i = 1; i <= 3; i++) { store.chatAdd(post(i)); store.contextoDespuesAgregar(jid, post(i)) }
+  ok(JSON.stringify(store.get('CTX-1').contexto.despues.map((m) => m.id)) === JSON.stringify(['POST-1', 'POST-2', 'POST-3']),
+    '"después" se llena a medida que llegan mensajes')
+
+  // Segundo documento: los mensajes entre medio cuentan como "después" del
+  // primero y "antes" del segundo.
+  store.chatAdd({ id: 'CTX-2', remoteJid: jid, ts: new Date(t0 + 15 * 60000).toISOString(), kind: 'documento', text: 'segundo doc', filename: 'Segundo.pdf', mime: 'application/pdf' })
+  store.add(registro('CTX-2', 'Segundo.pdf', 222, new Date(t0 + 15 * 60000).toISOString()))
+  const antes2 = store.contextoInicial(jid, 'CTX-2')
+  ok(JSON.stringify(antes2.map((m) => m.id)) === JSON.stringify(['CTX-1', 'POST-1', 'POST-2', 'POST-3']),
+    `los mensajes entre archivos cuentan: antes de CTX-2 = ${antes2.map((m) => m.id).join(', ')}`)
+  store.update('CTX-2', { contexto: { antes: antes2, despues: [] } })
+
+  for (let i = 4; i <= 6; i++) { store.chatAdd(post(i)); store.contextoDespuesAgregar(jid, post(i)) }
+  ok(JSON.stringify(store.get('CTX-1').contexto.despues.map((m) => m.id)) === JSON.stringify(['POST-1', 'POST-2', 'POST-3', 'POST-4']),
+    'CTX-1: "después" nunca pasa de 4')
+  ok(JSON.stringify(store.get('CTX-2').contexto.despues.map((m) => m.id)) === JSON.stringify(['POST-4', 'POST-5', 'POST-6']),
+    'CTX-2: sus propios 3 posteriores')
+
+  // Alias teléfono ↔ @lid: mensaje que llega bajo la otra forma se suma igual.
+  const postLid = { id: 'POST-LID', remoteJid: '92535791870140@lid', ts: new Date(t0 + 19 * 60000).toISOString(), kind: 'texto', text: 'bajo @lid' }
+  store.chatAdd(postLid)
+  store.contextoDespuesAgregar('92535791870140@lid', postLid)
+  ok(store.get('CTX-2').contexto.despues.some((m) => m.id === 'POST-LID'),
+    'mensaje llegado bajo @lid se suma al documento guardado bajo el teléfono')
+  ok(store.mismoChat('92535791870140@lid', jid), 'mismoChat resuelve teléfono ↔ @lid')
+
+  // La API devuelve la ventana con nombres legibles y orden cronológico.
+  const rc = await api('/api/documents/CTX-1/contexto')
+  ok(rc.status === 200 && rc.data.filename === 'Contexto.pdf' && rc.data.before.length === 4 && rc.data.after.length === 4,
+    `GET /api/documents/CTX-1/contexto → before ${rc.data.before.length} / after ${rc.data.after.length}`)
+  ok(rc.data.before[0].id === 'PRE-3' && rc.data.after[3].id === 'POST-4', 'antes y después en orden cronológico (antiguo → reciente)')
+  ok(rc.data.before.every((m) => m.from === 'Juan Pérez' || m.fromMe), 'los mensajes ajenos muestran el nombre del contacto')
+  ok(rc.data.direction === 'received' && rc.data.from === 'Juan Pérez', 'el documento viene con remitente legible')
+  const nx = await api('/api/documents/NOEXISTE-999/contexto')
+  ok(nx.status === 404, 'contexto de id inexistente → 404')
+
+  // Documento VIEJO (sin contexto guardado): se reconstruye del chatlog.
+  store.chatAdd({ id: 'LEGACY', remoteJid: jid, ts: new Date(t0 + 22 * 60000).toISOString(), kind: 'documento', text: 'viejo', filename: 'Viejo.pdf', mime: 'application/pdf' })
+  store.add({ ...registro('LEGACY', 'Viejo.pdf', 333, new Date(t0 + 22 * 60000).toISOString()), from: '92535791870140@lid' })
+  store.chatAdd({ id: 'LEG-A', remoteJid: jid, ts: new Date(t0 + 23 * 60000).toISOString(), kind: 'texto', text: 'después del viejo' })
+  store.chatAdd({ id: 'LEG-B', remoteJid: jid, ts: new Date(t0 + 24 * 60000).toISOString(), kind: 'texto', text: 'y otro más' })
+  const rl = await api('/api/documents/LEGACY/contexto')
+  ok(rl.status === 200 && JSON.stringify(rl.data.before.map((m) => m.id)) === JSON.stringify(['POST-4', 'POST-5', 'POST-6', 'POST-LID']),
+    `documento viejo: ventana reconstruida del chatlog: ${rl.data.before.map((m) => m.id).join(', ')}`)
+  ok(JSON.stringify(rl.data.after.map((m) => m.id)) === JSON.stringify(['LEG-A', 'LEG-B']),
+    `documento viejo: 2 mensajes después: ${rl.data.after.map((m) => m.id).join(', ')}`)
+}
+
+console.log('\n[20] Limpieza de archivos descargados (manual = todos; automática = >3 días)')
 {
   const hace4d = new Date(Date.now() - 4 * 86400_000).toISOString()
   const pdfViejo = path.join(DIROUT, 'Informe.pdf')

@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-doc-receiver",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Receptor headless de documentos de WhatsApp para Fedora con poca RAM: Baileys + mini web GUI en el mismo proceso Node (sin Electron)",
   "private": true,
   "type": "module",

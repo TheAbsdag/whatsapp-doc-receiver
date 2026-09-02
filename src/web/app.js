@@ -329,26 +329,27 @@ async function procesarCola() {
 }
 
 // ---------------------------------------------------------------------------
-// Contexto del chat (últimos mensajes, solo lectura)
+// Contexto del documento (ventana: 4 antes + hasta 4 después, solo lectura)
 // ---------------------------------------------------------------------------
 
-async function abrirContexto(jid, docId) {
-  if (!jid) return;
+async function abrirContexto(docId) {
+  if (!docId) return;
   const panel = $('#contexto-panel');
   const zona = $('#contexto-msgs');
   try {
-    const r = await api(`/api/chat/${encodeURIComponent(jid)}/messages?limit=10`);
-    $('#contexto-titulo').textContent = `Contexto del chat · ${jid}`;
+    const r = await api(`/api/documents/${encodeURIComponent(docId)}/contexto`);
+    $('#contexto-titulo').textContent = `Contexto · ${r.filename || 'documento'}`;
     zona.textContent = '';
-    const msgs = r.messages || [];
-    if (!msgs.length) {
+    const antes = r.before || [];
+    const despues = r.after || [];
+    if (!antes.length && !despues.length) {
       zona.className = 'vacio';
-      zona.textContent = 'Sin mensajes registrados todavía (el contexto se guarda desde ahora).';
+      zona.textContent = 'Sin mensajes registrados alrededor de este documento todavía (el contexto se guarda desde ahora).';
     } else {
       zona.className = '';
-      for (const m of msgs) {
+      const burbuja = (m) => {
         const div = document.createElement('div');
-        div.className = 'chat-msg ' + (m.fromMe ? 'mio ' : '') + (m.id === docId ? 'destacado' : '');
+        div.className = 'chat-msg' + (m.fromMe ? ' mio' : '');
         const cuerpo = m.kind === 'texto' ? m.text
           : m.kind === 'documento' ? `📄 ${m.filename || 'documento'}${m.text ? ` — ${m.text}` : ''}`
           : m.kind === 'imagen' ? `🖼️ ${m.text || 'imagen'}${m.filename ? ` (${m.filename})` : ''}`
@@ -356,8 +357,14 @@ async function abrirContexto(jid, docId) {
         // m.from viene con el nombre/apodo del remitente (resuelto en el servidor)
         const remitente = m.fromMe ? 'Yo' : (m.from || m.remoteJid || '');
         div.textContent = `${fmtHora(m.ts)} · ${remitente}\n${cuerpo}`;
-        zona.appendChild(div);
-      }
+        return div;
+      };
+      for (const m of antes) zona.appendChild(burbuja(m));
+      const marcador = document.createElement('div');
+      marcador.className = 'chat-msg destacado';
+      marcador.textContent = `${fmtHora(r.receivedAt)} · ${r.direction === 'sent' ? 'Yo' : (r.from || '')}\n📄 ${r.filename || 'documento'} — este documento`;
+      zona.appendChild(marcador);
+      for (const m of despues) zona.appendChild(burbuja(m));
     }
     panel.hidden = false;
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -541,7 +548,7 @@ async function principal() {
       }
       return;
     }
-    if (tr && !btn) abrirContexto(tr.dataset.jid, tr.dataset.id);
+    if (tr && !btn) abrirContexto(tr.dataset.id);
   });
 
   document.addEventListener('visibilitychange', () => {

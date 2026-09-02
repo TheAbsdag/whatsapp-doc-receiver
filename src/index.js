@@ -9,6 +9,7 @@
 //   GET  /api/documents/:id/file    → sirve el archivo descargado (vista previa) | 404/409/403
 //   POST /api/documents/:id/print    → { ok, message } | 404/409/500
 //   GET  /api/chat/:jid/messages → { chat, messages: [...] } contexto del chat
+//   GET  /api/documents/:id/contexto → ventana del documento (4 antes + hasta 4 después)
 //   GET  /api/debug-log          → { file, lines } últimas líneas del log de diagnóstico
 //   GET/POST /api/printer       → leer/guardar el nombre de impresora
 //   GET  /api/printers          → { printers: [...] } del sistema (lpstat -a)
@@ -260,6 +261,25 @@ function limpiarAutomatico(config) {
 }
 
 /**
+ * Ventana de contexto de un documento: 4 mensajes antes + hasta 4 después.
+ * Los registros nuevos guardan su propia ventana (contexto{antes,despues},
+ * que se llena a medida que llegan mensajes). Los viejos (sin contexto) se
+ * reconstruyen con mejor esfuerzo desde el chatlog acotado.
+ */
+function ventanaContexto(doc) {
+  if (doc.contexto && Array.isArray(doc.contexto.antes) && Array.isArray(doc.contexto.despues)) {
+    return { antes: doc.contexto.antes, despues: doc.contexto.despues }
+  }
+  const todos = store.chatVentana(doc.remoteJid, 10)
+  const i = todos.findIndex((m) => m.id === doc.id)
+  if (i < 0) return { antes: [], despues: [] }
+  return {
+    antes: todos.slice(Math.max(0, i - 4), i),
+    despues: todos.slice(i + 1, i + 5),
+  }
+}
+
+/**
  * Crea la app HTTP. `api` (inyectable para tests) debe exponer:
  *   getStatus(), getQrString(), downloadMedia(message)
  */
@@ -326,6 +346,32 @@ export function createApp({ config, api } = {}) {
 
       if (req.method === 'GET' && p === '/api/debug-log') {
         return json(res, 200, { file: DEBUG_FILE, lines: leerUltimas(120) })
+      }
+
+      // Ventana de contexto de UN documento: hasta 4 mensajes antes y hasta 4
+      // después (guardada por documento; los registros viejos se reconstruyen
+      // con mejor esfuerzo desde el chatlog acotado).
+      const cx = p.match(/^\/api\/documents\/([^/]+)\/contexto$/)
+      if (req.method === 'GET' && cx) {
+        const id = decodeURIComponent(cx[1])
+        const doc = store.get(id)
+        if (!doc) return json(res, 404, { error: 'Documento no encontrado' })
+        const { antes, despues } = ventanaContexto(doc)
+        const nombrar = (m) => ({
+          ...m,
+          from: m.fromMe ? '' : nombreLegible(m.participant || m.remoteJid),
+        })
+        const orden = (a, b) => String(a.ts || '').localeCompare(String(b.ts || ''))
+        return json(res, 200, {
+          id,
+          remoteJid: doc.remoteJid,
+          filename: doc.filename,
+          direction: doc.direction,
+          receivedAt: doc.receivedAt,
+          from: doc.direction === 'sent' ? '' : nombreLegible(doc.remoteJid),
+          before: antes.map(nombrar).sort(orden),
+          after: despues.map(nombrar).sort(orden),
+        })
       }
 
       // Limpieza manual: elimina TODOS los archivos descargados (sin importar
@@ -464,7 +510,7 @@ function main() {
       saveState()
     },
     onChatMessage: (_msg, info) => {
-      store.chatAdd({
+      const m = {
         id: _msg.key.id,
         remoteJid: info.remoteJid,
         participant: info.participant || '',
@@ -474,7 +520,11 @@ function main() {
         text: info.text,
         filename: info.filename,
         mime: info.mime,
-      })
+      }
+      store.chatAdd(m)
+      // Ventana "después": este mensaje se suma (hasta 4) a los documentos
+      // del mismo chat que ya tienen contexto guardado.
+      store.contextoDespuesAgregar(info.remoteJid, m)
     },
     onDocument: (msg, info) => {
       const ts = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()
@@ -493,6 +543,10 @@ function main() {
         message: msg, // necesario para re-descargar la media más tarde
       }
       store.add(record)
+      // Ventana "antes": snapshot de los 4 mensajes que preceden al archivo
+      // (el propio mensaje ya está en el chatlog y lo excluye contextoInicial).
+      // Siempre se guarda (aunque vacía) para que los posteriores se sumen.
+      store.update(record.id, { contexto: { antes: store.contextoInicial(record.remoteJid, record.id), despues: [] } })
     },
   })
 }
